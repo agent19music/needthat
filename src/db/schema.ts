@@ -1,4 +1,14 @@
 import { sql } from 'drizzle-orm'
+
+export {
+  account,
+  accountRelations,
+  session,
+  sessionRelations,
+  user,
+  userRelations,
+  verification,
+} from './auth-schema.ts'
 import {
   index,
   integer,

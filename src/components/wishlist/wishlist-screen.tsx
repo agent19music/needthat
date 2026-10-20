@@ -1,49 +1,58 @@
-import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
-import { useForm } from '@tanstack/react-form'
-import { CheckIcon, ImageIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ImageIcon } from '@phosphor-icons/react'
 
+import { Button } from '#/components/arc/button/button'
+import { Card } from '#/components/arc/card/card'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+} from '#/components/arc/dialog/dialog'
+import { CommandPalette } from '#/components/arc/command-palette/command-palette'
+import type { CommandItem } from '#/components/arc/command-palette/command-palette'
+import { DropdownMenu } from '#/components/arc/dropdown-menu/dropdown-menu'
+import { Input } from '#/components/arc/input/input'
+import { HeatWord } from '#/components/heat-word'
+import { ItemEditor } from '#/components/wishlist/item-editor'
+import type { EditorDraft } from '#/components/wishlist/item-editor'
 import { ProductSearch } from '#/components/wishlist/product-search'
-import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
-import { Textarea } from '#/components/ui/textarea'
+import type { ProductCandidate } from '#/lib/discovery/candidates'
+import { cleanRemoteImage } from '#/lib/images/clean-remote-image'
 import {
   deleteGuestItem,
   GuestStoreError,
+  loadGuestCategories,
   loadGuestItems,
+  saveGuestCategory,
   saveGuestItem,
 } from '#/lib/guest-wishlist'
-import type { GuestItem } from '#/lib/guest-wishlist'
-import {
-  ACCEPTED_IMAGE_TYPES,
-  itemDraftSchema,
-  validateImageFile,
-} from '#/lib/item-draft'
-import type { ItemDraft } from '#/lib/item-draft'
+import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 
-const emptyDraft: ItemDraft = {
-  title: '',
-  brand: '',
-  notes: '',
-  sourceUrl: '',
-}
+const SUGGESTED_CATEGORIES = ['Clothes', 'Tech', 'Subscriptions']
 
 export function WishlistScreen() {
   const [items, setItems] = useState<Array<GuestItem>>([])
+  const [categories, setCategories] = useState<Array<GuestCategory>>([])
   const [ready, setReady] = useState(false)
   const [storageError, setStorageError] = useState<string | null>(null)
-  const [editing, setEditing] = useState<GuestItem | null>(null)
-  const [composerOpen, setComposerOpen] = useState(false)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [editor, setEditor] = useState<EditorDraft | null>(null)
+  const [confirmItem, setConfirmItem] = useState<GuestItem | null>(null)
+  const [categoryOpen, setCategoryOpen] = useState(false)
+  const [categoryName, setCategoryName] = useState('')
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+  const [commandOpen, setCommandOpen] = useState(false)
   const [pendingRemoval, setPendingRemoval] = useState<GuestItem | null>(null)
   const removalTimer = useRef<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    loadGuestItems()
-      .then((loaded) => {
+    Promise.all([loadGuestItems(), loadGuestCategories()])
+      .then(([loadedItems, loadedCategories]) => {
         if (cancelled) return
-        setItems(loaded)
+        setItems(loadedItems)
+        setCategories(loadedCategories)
         setReady(true)
       })
       .catch((error: unknown) => {
@@ -58,11 +67,47 @@ export function WishlistScreen() {
 
   useEffect(() => {
     return () => {
-      if (removalTimer.current !== null) {
-        window.clearTimeout(removalTimer.current)
-      }
+      if (removalTimer.current !== null) window.clearTimeout(removalTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+      if (editor || confirmItem || categoryOpen) return
+      event.preventDefault()
+      setCommandOpen((open) => !open)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [editor, confirmItem, categoryOpen])
+
+  const visibleItems = items.filter((item) =>
+    selectedCategoryId === null ? true : item.categoryId === selectedCategoryId,
+  )
+  const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null
+
+  const commands = useMemo<Array<CommandItem>>(() => {
+    const existing = new Set(categories.map((category) => category.name.toLowerCase()))
+    return [
+      { id: 'all', label: 'All items', group: 'Categories' },
+      ...categories.map((category) => ({
+        id: `category:${category.id}`,
+        label: category.name,
+        group: 'Categories',
+      })),
+      { id: 'new-category', label: 'New category', group: 'Create' },
+      ...SUGGESTED_CATEGORIES.filter((name) => !existing.has(name.toLowerCase())).map(
+        (name) => ({
+          id: `suggest:${name}`,
+          label: name,
+          description: 'New category',
+          group: 'Create',
+        }),
+      ),
+      { id: 'add', label: 'Add an item', group: 'Actions' },
+    ]
+  }, [categories])
 
   function commitRemoval(item: GuestItem) {
     void deleteGuestItem(item.id).catch((error: unknown) => {
@@ -76,15 +121,11 @@ export function WishlistScreen() {
   }
 
   function removeItem(item: GuestItem) {
-    if (pendingRemoval && pendingRemoval.id !== item.id) {
-      commitRemoval(pendingRemoval)
-    }
-    if (removalTimer.current !== null) {
-      window.clearTimeout(removalTimer.current)
-    }
+    if (pendingRemoval && pendingRemoval.id !== item.id) commitRemoval(pendingRemoval)
+    if (removalTimer.current !== null) window.clearTimeout(removalTimer.current)
     setPendingRemoval(item)
     setItems((current) => current.filter((entry) => entry.id !== item.id))
-    if (editing?.id === item.id) setEditing(null)
+    if (editor?.id === item.id) setEditor(null)
     removalTimer.current = window.setTimeout(() => {
       commitRemoval(item)
       setPendingRemoval((current) => (current?.id === item.id ? null : current))
@@ -114,9 +155,7 @@ export function WishlistScreen() {
       updatedAt: Date.now(),
     }
     const previous = items
-    setItems((current) =>
-      current.map((entry) => (entry.id === item.id ? next : entry)),
-    )
+    setItems((current) => current.map((entry) => (entry.id === item.id ? next : entry)))
     try {
       await saveGuestItem(next)
       setStorageError(null)
@@ -126,480 +165,410 @@ export function WishlistScreen() {
     }
   }
 
-  const showComposer = composerOpen || editing !== null || (ready && items.length === 0)
+  async function createCategory(name: string) {
+    const trimmed = name.trim()
+    if (!trimmed) return 'Add a name.'
+    if (trimmed.length > 40) return 'Keep the name under 40 characters.'
+    if (categories.some((category) => category.name.toLowerCase() === trimmed.toLowerCase())) {
+      return 'You already have that category.'
+    }
+    const category: GuestCategory = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      createdAt: Date.now(),
+    }
+    try {
+      await saveGuestCategory(category)
+    } catch (error) {
+      return messageFrom(error)
+    }
+    setCategories((current) => [...current, category])
+    setSelectedCategoryId(category.id)
+    setStorageError(null)
+    return null
+  }
+
+  function openEditor(draft: EditorDraft) {
+    setEditor(draft)
+  }
+
+  function runCommand(item: CommandItem) {
+    setCommandOpen(false)
+    if (item.id === 'all') {
+      setSelectedCategoryId(null)
+      return
+    }
+    if (item.id === 'new-category') {
+      setCategoryName('')
+      setCategoryError(null)
+      setCategoryOpen(true)
+      return
+    }
+    if (item.id === 'add') {
+      document.getElementById('describe')?.focus()
+      return
+    }
+    if (item.id.startsWith('category:')) {
+      setSelectedCategoryId(item.id.slice('category:'.length))
+      return
+    }
+    if (item.id.startsWith('suggest:')) {
+      void createCategory(item.id.slice('suggest:'.length)).then((error) => {
+        if (error) setStorageError(error)
+      })
+    }
+  }
 
   return (
-    <main className="mx-auto w-full max-w-[1080px] px-4 py-8 sm:px-6 sm:py-12">
-      <header className="mb-8 flex items-end justify-between gap-6">
-        <div className="max-w-xl">
-          <h1 className="text-[32px] leading-none font-semibold tracking-[-0.03em] text-[#1c1c1a]">
-            Wishlist
-          </h1>
-          <p className="mt-3 text-sm leading-5 text-[#5c5a55]">
-            Saved on this browser. It is not backed up and will not appear on
-            another device.
-          </p>
-        </div>
-        {items.length > 0 && !showComposer ? (
-          <Button
-            type="button"
-            className="motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out motion-safe:active:scale-[0.96]"
-            onClick={() => setComposerOpen(true)}
-          >
-            <PlusIcon />
-            Add
-          </Button>
-        ) : null}
-      </header>
-
-      {storageError ? (
-        <p
-          role="alert"
-          className="mb-6 rounded-md bg-[#1c1c1a] px-4 py-3 text-sm text-[#f6f5f2]"
+    <div className="wishlist-shell">
+      <nav className="category-nav" aria-label="Categories">
+        <p className="category-nav-label">Categories</p>
+        <button
+          type="button"
+          aria-current={selectedCategoryId === null ? 'page' : undefined}
+          onClick={() => setSelectedCategoryId(null)}
         >
-          {storageError}
-        </p>
-      ) : null}
-
-      {showComposer ? (
-        <ItemComposer
-          key={editing?.id ?? 'new'}
-          editing={editing}
-          onCancel={() => {
-            setEditing(null)
-            setComposerOpen(false)
+          All
+        </button>
+        {categories.map((category) => (
+          <button
+            key={category.id}
+            type="button"
+            aria-current={selectedCategoryId === category.id ? 'page' : undefined}
+            onClick={() => setSelectedCategoryId(category.id)}
+          >
+            {category.name}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => {
+            setCategoryName('')
+            setCategoryError(null)
+            setCategoryOpen(true)
           }}
-          onSaved={(item) => {
+        >
+          New category
+        </button>
+      </nav>
+
+      <main>
+        <header className="mb-8 pe-28">
+          <h1>
+            <HeatWord />
+          </h1>
+          <p className="wishlist-note mt-3">
+            Saved on this browser. It is not backed up and will not appear on another device.
+          </p>
+        </header>
+
+        {storageError ? (
+          <p role="alert" className="wishlist-alert">
+            {storageError}
+          </p>
+        ) : null}
+
+        <div className="grid gap-3">
+          <ProductSearch
+            id="describe"
+            value={query}
+            onChange={setQuery}
+            onSelect={(candidate) => {
+              openEditor(draftFromCandidate(candidate, selectedCategoryId))
+              setQuery('')
+            }}
+          />
+          {query.trim().length > 0 ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => openEditor(emptyDraft(query.trim(), selectedCategoryId))}
+              >
+                Add details
+              </Button>
+            </div>
+          ) : (
+            <p className="wishlist-note">Press Ctrl K to switch category or add one.</p>
+          )}
+        </div>
+
+        {!ready ? (
+          <p className="wishlist-note mt-8">Loading your list…</p>
+        ) : visibleItems.length === 0 ? (
+          <p className="wishlist-note mt-8">
+            {selectedCategory
+              ? `Nothing in ${selectedCategory.name} yet.`
+              : 'Describe something above and pick a match, or add the details yourself.'}
+          </p>
+        ) : (
+          <ul className="mt-8 grid grid-cols-2 items-stretch gap-x-4 gap-y-8 sm:grid-cols-3">
+            {visibleItems.map((item) => (
+              <li key={item.id} className="flex min-w-0">
+                <ItemCard
+                  item={item}
+                  onEdit={() => openEditor(draftFromItem(item))}
+                  onAskRemove={() => setConfirmItem(item)}
+                  onTogglePurchased={() => {
+                    void togglePurchased(item)
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+
+      <ItemEditor
+        draft={editor}
+        categories={categories}
+        onOpenChange={(open) => {
+          if (!open) setEditor(null)
+        }}
+        onSave={async (item) => {
+          try {
+            await saveGuestItem(item)
             setItems((current) =>
               [item, ...current.filter((entry) => entry.id !== item.id)].sort(
                 (a, b) => b.createdAt - a.createdAt,
               ),
             )
-            setEditing(null)
-            setComposerOpen(false)
+            setEditor(null)
             setStorageError(null)
-          }}
-          onError={setStorageError}
-        />
-      ) : null}
+            if (item.imageUrl && !item.image) {
+              const sourceUrl = item.imageUrl
+              const itemId = item.id
+              void cleanRemoteImage(itemId, sourceUrl).then((url) => {
+                if (!url || url === sourceUrl) return
+                setItems((current) => {
+                  const existing = current.find((entry) => entry.id === itemId)
+                  if (!existing || existing.image || existing.imageUrl !== sourceUrl) return current
+                  const next = { ...existing, imageUrl: url, updatedAt: Date.now() }
+                  void saveGuestItem(next)
+                  return current.map((entry) => (entry.id === itemId ? next : entry))
+                })
+              })
+            }
+          } catch (error) {
+            setStorageError(messageFrom(error))
+            throw error
+          }
+        }}
+      />
 
-      {!ready ? (
-        <p className="text-sm text-[#5c5a55]">Loading your list…</p>
-      ) : items.length === 0 && !storageError ? null : (
-        <ul className="mt-8 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3">
-          {items.map((item) => (
-            <li key={item.id}>
-              <ItemCard
-                item={item}
-                onEdit={() => {
-                  setComposerOpen(false)
-                  setEditing(item)
+      <Dialog
+        open={confirmItem !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmItem(null)
+        }}
+      >
+        {confirmItem ? (
+          <DialogContent title="Remove this item?" description={confirmItem.title}>
+            <div className="dialog-actions">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => {
+                  removeItem(confirmItem)
+                  setConfirmItem(null)
                 }}
-                onRemove={() => removeItem(item)}
-                onTogglePurchased={() => {
-                  void togglePurchased(item)
+              >
+                Remove
+              </Button>
+            </div>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      <Dialog open={categoryOpen} onOpenChange={setCategoryOpen}>
+        {categoryOpen ? (
+          <DialogContent
+            title="New category"
+            description="Clothes, tech, subscriptions, or anything else."
+          >
+            <Input
+              label="Name"
+              value={categoryName}
+              error={categoryError ?? undefined}
+              onChange={(event) => setCategoryName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return
+                event.preventDefault()
+                void createCategory(categoryName).then((error) => {
+                  if (error) setCategoryError(error)
+                  else setCategoryOpen(false)
+                })
+              }}
+            />
+            <div className="dialog-actions">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => {
+                  void createCategory(categoryName).then((error) => {
+                    if (error) setCategoryError(error)
+                    else setCategoryOpen(false)
+                  })
                 }}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+              >
+                Add category
+              </Button>
+            </div>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      <Dialog open={commandOpen} onOpenChange={setCommandOpen}>
+        {commandOpen ? (
+          <DialogContent title="Commands" description="Categories and actions.">
+            <CommandPalette
+              items={commands}
+              autoFocus
+              placeholder="Search categories or actions"
+              onClose={() => setCommandOpen(false)}
+              onSelect={runCommand}
+            />
+          </DialogContent>
+        ) : null}
+      </Dialog>
 
       {pendingRemoval ? (
-        <div className="fixed inset-x-4 bottom-4 z-20 mx-auto flex max-w-md items-center justify-between gap-4 rounded-md bg-[#1c1c1a] px-4 py-3 text-sm text-[#f6f5f2] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:left-auto">
+        <div className="undo-toast" role="status">
           <p>Removed {pendingRemoval.title}</p>
-          <button
-            type="button"
-            className="font-medium underline-offset-4 hover:underline"
-            onClick={undoRemoval}
-          >
+          <button type="button" onClick={undoRemoval}>
             Undo
           </button>
         </div>
       ) : null}
-    </main>
-  )
-}
-
-function ItemComposer({
-  editing,
-  onCancel,
-  onSaved,
-  onError,
-}: {
-  editing: GuestItem | null
-  onCancel: () => void
-  onSaved: (item: GuestItem) => void
-  onError: (message: string) => void
-}) {
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imageError, setImageError] = useState<string | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [remoteImageUrl, setRemoteImageUrl] = useState<string | null>(
-    editing?.imageUrl ?? null,
-  )
-  const [clearedExistingImage, setClearedExistingImage] = useState(false)
-  const [detailsOpen, setDetailsOpen] = useState(editing !== null)
-  const [fileKey, setFileKey] = useState(0)
-  const existingPreview = useObjectUrl(
-    clearedExistingImage ? null : (editing?.image ?? null),
-  )
-
-  useEffect(() => {
-    if (!imageFile) {
-      setPreviewUrl(null)
-      return
-    }
-    const url = URL.createObjectURL(imageFile)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [imageFile])
-
-  const form = useForm({
-    defaultValues: editing
-      ? {
-          title: editing.title,
-          brand: editing.brand,
-          notes: editing.notes,
-          sourceUrl: editing.sourceUrl,
-        }
-      : emptyDraft,
-    onSubmit: async ({ value }) => {
-      const parsed = itemDraftSchema.safeParse(value)
-      if (!parsed.success) return
-      if (imageFile) {
-        const fileError = validateImageFile(imageFile)
-        if (fileError) {
-          setImageError(fileError)
-          return
-        }
-      }
-
-      const now = Date.now()
-      const nextImage = imageFile
-        ? imageFile
-        : clearedExistingImage
-          ? null
-          : (editing?.image ?? null)
-      const item: GuestItem = {
-        id: editing?.id ?? crypto.randomUUID(),
-        title: parsed.data.title,
-        brand: parsed.data.brand,
-        notes: parsed.data.notes,
-        sourceUrl: parsed.data.sourceUrl,
-        status: editing?.status ?? 'unresolved',
-        image: nextImage,
-        imageType: imageFile
-          ? imageFile.type
-          : nextImage
-            ? (editing?.imageType ?? null)
-            : null,
-        imageUrl: imageFile ? null : remoteImageUrl,
-        createdAt: editing?.createdAt ?? now,
-        updatedAt: now,
-      }
-
-      try {
-        await saveGuestItem(item)
-        onSaved(item)
-        form.reset()
-        setImageFile(null)
-        setRemoteImageUrl(null)
-        setClearedExistingImage(false)
-        setImageError(null)
-        setFileKey((key) => key + 1)
-      } catch (error) {
-        onError(messageFrom(error))
-      }
-    },
-  })
-
-  const shownPreview = previewUrl ?? existingPreview ?? remoteImageUrl
-
-  return (
-    <form
-      className="grid gap-4 rounded-md bg-white p-4 shadow-[0_0_0_1px_oklch(0_0_0/0.08)]"
-      onSubmit={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        void form.handleSubmit()
-      }}
-    >
-      <form.Field
-        name="title"
-        validators={{
-          onSubmit: ({ value }) =>
-            fieldError(itemDraftSchema.shape.title, value),
-        }}
-      >
-        {(field) => (
-          <ProductSearch
-            id={field.name}
-            value={field.state.value}
-            error={firstError(field.state.meta.errors)}
-            onChange={(value) => field.handleChange(value)}
-            onSelect={(candidate) => {
-              field.handleChange(candidate.title)
-              form.setFieldValue('sourceUrl', candidate.url ?? '')
-              setRemoteImageUrl(candidate.imageUrl)
-              setImageFile(null)
-              setClearedExistingImage(true)
-              setImageError(null)
-              setDetailsOpen(true)
-            }}
-          />
-        )}
-      </form.Field>
-      {detailsOpen ? (
-      <>
-      <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
-        <div>
-          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-[#f6f5f2] shadow-[inset_0_0_0_1px_oklch(0_0_0/0.1)]">
-            {shownPreview ? (
-              <img
-                src={shownPreview}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="h-full w-full object-contain p-3"
-              />
-            ) : (
-              <ImageIcon className="text-[#8a877f]" size={28} />
-            )}
-          </div>
-          <Label htmlFor="item-image" className="mt-3">
-            Photo
-          </Label>
-          <Input
-            key={fileKey}
-            id="item-image"
-            className="mt-2"
-            type="file"
-            accept={ACCEPTED_IMAGE_TYPES.join(',')}
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null
-              if (!file) {
-                setImageFile(null)
-                setImageError(null)
-                return
-              }
-              const fileError = validateImageFile(file)
-              setImageError(fileError)
-              if (fileError) return
-              setImageFile(file)
-              setRemoteImageUrl(null)
-              setClearedExistingImage(true)
-            }}
-          />
-          {imageError ? (
-            <p className="mt-2 text-sm text-[#8a2f2f]">{imageError}</p>
-          ) : (
-            <p className="mt-2 text-xs leading-4 text-[#5c5a55]">
-              JPEG, PNG, WebP, or GIF. 8 MB maximum. A photo does not verify
-              the product.
-            </p>
-          )}
-        </div>
-
-        <div className="grid content-start gap-4">
-          <form.Field
-            name="brand"
-            validators={{
-              onSubmit: ({ value }) =>
-                fieldError(itemDraftSchema.shape.brand, value),
-            }}
-          >
-            {(field) => (
-              <Field
-                id={field.name}
-                label="Brand"
-                error={firstError(field.state.meta.errors)}
-              >
-                <Input
-                  id={field.name}
-                  name={field.name}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-              </Field>
-            )}
-          </form.Field>
-          <form.Field
-            name="sourceUrl"
-            validators={{
-              onSubmit: ({ value }) =>
-                fieldError(itemDraftSchema.shape.sourceUrl, value),
-            }}
-          >
-            {(field) => (
-              <Field
-                id={field.name}
-                label="Link"
-                error={firstError(field.state.meta.errors)}
-              >
-                <Input
-                  id={field.name}
-                  name={field.name}
-                  inputMode="url"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                  aria-invalid={field.state.meta.errors.length > 0}
-                />
-              </Field>
-            )}
-          </form.Field>
-          <form.Field
-            name="notes"
-            validators={{
-              onSubmit: ({ value }) =>
-                fieldError(itemDraftSchema.shape.notes, value),
-            }}
-          >
-            {(field) => (
-              <Field
-                id={field.name}
-                label="Notes"
-                error={firstError(field.state.meta.errors)}
-              >
-                <Textarea
-                  id={field.name}
-                  name={field.name}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-              </Field>
-            )}
-          </form.Field>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            form.reset()
-            setImageFile(null)
-            setRemoteImageUrl(null)
-            setClearedExistingImage(false)
-            setImageError(null)
-            setFileKey((key) => key + 1)
-            onCancel()
-          }}
-        >
-          Cancel
-        </Button>
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(isSubmitting) => (
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out motion-safe:active:scale-[0.96]"
-            >
-              {isSubmitting ? 'Saving…' : editing ? 'Save changes' : 'Save'}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-      </>
-      ) : (
-        <div className="flex justify-end">
-          <Button type="button" variant="ghost" onClick={() => setDetailsOpen(true)}>
-            Save this description
-          </Button>
-        </div>
-      )}
-    </form>
+    </div>
   )
 }
 
 function ItemCard({
   item,
   onEdit,
-  onRemove,
+  onAskRemove,
   onTogglePurchased,
 }: {
   item: GuestItem
   onEdit: () => void
-  onRemove: () => void
+  onAskRemove: () => void
   onTogglePurchased: () => void
 }) {
   const blobUrl = useObjectUrl(item.image)
   const preview = blobUrl ?? item.imageUrl
 
   return (
-    <article className="grid gap-3">
-      <button
-        type="button"
-        className="block w-full text-left"
-        onClick={onEdit}
-      >
-        <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-white shadow-[inset_0_0_0_1px_oklch(0_0_0/0.1)]">
+    <Card
+      title={item.title}
+      description={item.brand || undefined}
+      status={item.status === 'purchased' ? 'Purchased' : undefined}
+      media={
+        <div className="flex h-full w-full items-center justify-center">
           {preview ? (
             <img
               src={preview}
               alt=""
               referrerPolicy="no-referrer"
-              className="h-full w-full object-contain p-3"
+              className="max-h-full max-w-full object-contain p-3"
             />
           ) : (
-            <ImageIcon className="text-[#8a877f]" size={28} />
+            <ImageIcon style={{ color: 'var(--text-muted)' }} size={28} />
           )}
         </div>
-        <h2 className="mt-3 text-[15px] leading-5 font-medium text-[#1c1c1a]">
-          {item.title}
-        </h2>
-        {item.brand ? (
-          <p className="text-sm leading-5 text-[#5c5a55]">{item.brand}</p>
-        ) : null}
-        {item.status === 'purchased' ? (
-          <p className="text-sm leading-5 text-[#5c5a55]">Purchased</p>
-        ) : null}
-      </button>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={onTogglePurchased}
-        >
-          <CheckIcon />
-          {item.status === 'purchased' ? 'Unpurchased' : 'Purchased'}
-        </Button>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          aria-label={`Remove ${item.title}`}
-          onClick={onRemove}
-        >
-          <TrashIcon />
-        </Button>
-      </div>
-    </article>
+      }
+      action={
+        <DropdownMenu
+          label="Edit"
+          items={[
+            { label: 'Edit details', onSelect: onEdit },
+            {
+              label: item.status === 'purchased' ? 'Mark as wanted' : 'Mark purchased',
+              onSelect: onTogglePurchased,
+            },
+            {
+              label: 'Remove',
+              destructive: true,
+              separatorBefore: true,
+              onSelect: onAskRemove,
+            },
+          ]}
+        />
+      }
+      details={
+        <div className="grid gap-4">
+          {item.notes ? <p>{item.notes}</p> : <p>No notes yet.</p>}
+          {item.sourceUrl ? (
+            <a href={item.sourceUrl} rel="noreferrer">
+              Listing
+            </a>
+          ) : null}
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" onClick={onEdit}>
+              Edit details
+            </Button>
+            <Button type="button" variant="secondary" onClick={onTogglePurchased}>
+              {item.status === 'purchased' ? 'Mark as wanted' : 'Mark purchased'}
+            </Button>
+          </div>
+        </div>
+      }
+    />
   )
 }
 
-function Field({
-  id,
-  label,
-  error,
-  children,
-}: {
-  id: string
-  label: string
-  error?: string
-  children: ReactNode
-}) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
-      {children}
-      {error ? <p className="text-sm text-[#8a2f2f]">{error}</p> : null}
-    </div>
-  )
+function emptyDraft(title: string, categoryId: string | null): EditorDraft {
+  return {
+    id: null,
+    title,
+    brand: '',
+    notes: '',
+    sourceUrl: '',
+    categoryId,
+    status: 'unresolved',
+    image: null,
+    imageType: null,
+    imageUrl: null,
+    createdAt: null,
+  }
+}
+
+function draftFromItem(item: GuestItem): EditorDraft {
+  return {
+    id: item.id,
+    title: item.title,
+    brand: item.brand,
+    notes: item.notes,
+    sourceUrl: item.sourceUrl,
+    categoryId: item.categoryId,
+    status: item.status,
+    image: item.image,
+    imageType: item.imageType,
+    imageUrl: item.imageUrl,
+    createdAt: item.createdAt,
+  }
+}
+
+function draftFromCandidate(
+  candidate: ProductCandidate,
+  categoryId: string | null,
+): EditorDraft {
+  return {
+    ...emptyDraft(candidate.title, categoryId),
+    brand: candidate.source,
+    sourceUrl: candidate.url ?? '',
+    imageUrl: candidate.imageUrl,
+  }
 }
 
 function useObjectUrl(blob: Blob | null) {
@@ -614,16 +583,6 @@ function useObjectUrl(blob: Blob | null) {
     return () => URL.revokeObjectURL(next)
   }, [blob])
   return url
-}
-
-function fieldError(schema: { safeParse: (value: string) => { success: boolean; error?: { issues: Array<{ message: string }> } } }, value: string) {
-  const result = schema.safeParse(value)
-  return result.success ? undefined : result.error?.issues[0]?.message
-}
-
-function firstError(errors: Array<unknown>) {
-  const error = errors[0]
-  return typeof error === 'string' ? error : undefined
 }
 
 function messageFrom(error: unknown) {

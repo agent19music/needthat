@@ -8,7 +8,12 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
+import arcCss from '@/components/arc/foundation.css?url'
 import appCss from '../styles.css?url'
+
+import { AccountMenu } from '#/components/account-menu'
+
+const themeScript = `try {const saved = localStorage.getItem("theme");const dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.dataset.theme = dark ? "dark" : "light";} catch {}`
 
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -27,10 +32,14 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'Wishlist',
+        title: '#needthat',
       },
     ],
     links: [
+      {
+        rel: 'stylesheet',
+        href: arcCss,
+      },
       {
         rel: 'stylesheet',
         href: appCss,
@@ -42,11 +51,13 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
       <body>
+        <AccountMenu />
         {children}
         <TanStackDevtools
           config={{

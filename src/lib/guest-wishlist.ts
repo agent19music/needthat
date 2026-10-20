@@ -1,11 +1,18 @@
 export type ItemStatus = 'unresolved' | 'purchased'
 
+export type GuestCategory = {
+  id: string
+  name: string
+  createdAt: number
+}
+
 export type GuestItem = {
   id: string
   title: string
   brand: string
   notes: string
   sourceUrl: string
+  categoryId: string | null
   status: ItemStatus
   image: Blob | null
   imageType: string | null
@@ -15,8 +22,9 @@ export type GuestItem = {
 }
 
 const DB_NAME = 'wishlist'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE = 'items'
+const CATEGORIES = 'categories'
 
 export class GuestStoreError extends Error {
   constructor(
@@ -35,8 +43,29 @@ export async function loadGuestItems(): Promise<Array<GuestItem>> {
   )
   db.close()
   return items
-    .map((item) => ({ ...item, imageUrl: item.imageUrl ?? null }))
+    .map((item) => ({
+      ...item,
+      imageUrl: item.imageUrl ?? null,
+      categoryId: item.categoryId ?? null,
+    }))
     .sort((a, b) => b.createdAt - a.createdAt)
+}
+
+export async function loadGuestCategories(): Promise<Array<GuestCategory>> {
+  const db = await openDatabase()
+  const categories = await requestToPromise<Array<GuestCategory>>(
+    db.transaction(CATEGORIES, 'readonly').objectStore(CATEGORIES).getAll(),
+  )
+  db.close()
+  return categories.sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export async function saveGuestCategory(category: GuestCategory): Promise<void> {
+  const db = await openDatabase()
+  await requestToPromise(
+    db.transaction(CATEGORIES, 'readwrite').objectStore(CATEGORIES).put(category),
+  )
+  db.close()
 }
 
 export async function saveGuestItem(item: GuestItem): Promise<void> {
@@ -71,6 +100,9 @@ function openDatabase(): Promise<IDBDatabase> {
       const db = request.result
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains(CATEGORIES)) {
+        db.createObjectStore(CATEGORIES, { keyPath: 'id' })
       }
     }
     request.onsuccess = () => resolve(request.result)
