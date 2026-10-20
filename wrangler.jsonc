@@ -1,0 +1,52 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wishlist",
+  // Installed workerd supports through 2026-10-19. Advance this when the runtime does.
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
+  "vars": {
+    "SEARCH_COUNTRY": "ke",
+    "SEARCH_LANGUAGE": "en",
+    "DAILY_PROVIDER_CALL_LIMIT": "40"
+  },
+  // Names only. Values live in .dev.vars locally and Wrangler secrets in production.
+  // database_id is a local placeholder. Replace it after an authorized `wrangler d1 create wishlist`.
+  // Do not create the remote D1 database or R2 bucket until that is explicitly requested.
+  "secrets": {
+    "required": [
+      "SENTRY_DSN",
+      "SERPER_API_KEY",
+      "BETTER_AUTH_SECRET",
+      "BETTER_AUTH_URL",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wishlist",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "preview_database_id": "wishlist-local",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "wishlist-images"
+    }
+  ]
+}

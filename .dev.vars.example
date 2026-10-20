@@ -1,0 +1,7 @@
+# Local Worker secrets. Copy to .dev.vars. Do not commit .dev.vars.
+SENTRY_DSN=
+SERPER_API_KEY=
+BETTER_AUTH_SECRET=
+BETTER_AUTH_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
