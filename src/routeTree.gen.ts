@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PrototypesListRouteImport } from './routes/prototypes/list'
+import { Route as PrototypesStampsRouteImport } from './routes/prototypes/stamps'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiImagesKeyRouteImport } from './routes/api/images/$key'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const PrototypesListRoute = PrototypesListRouteImport.update({
   id: '/prototypes/list',
   path: '/prototypes/list',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrototypesStampsRoute = PrototypesStampsRouteImport.update({
+  id: '/prototypes/stamps',
+  path: '/prototypes/stamps',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -38,12 +44,14 @@ const ApiImagesKeyRoute = ApiImagesKeyRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/prototypes/list': typeof PrototypesListRoute
+  '/prototypes/stamps': typeof PrototypesStampsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/prototypes/list': typeof PrototypesListRoute
+  '/prototypes/stamps': typeof PrototypesStampsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
 }
@@ -51,20 +59,38 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/prototypes/list': typeof PrototypesListRoute
+  '/prototypes/stamps': typeof PrototypesStampsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/prototypes/list' | '/api/auth/$' | '/api/images/$key'
+  fullPaths:
+    | '/'
+    | '/prototypes/list'
+    | '/prototypes/stamps'
+    | '/api/auth/$'
+    | '/api/images/$key'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/prototypes/list' | '/api/auth/$' | '/api/images/$key'
-  id: '__root__' | '/' | '/prototypes/list' | '/api/auth/$' | '/api/images/$key'
+  to:
+    | '/'
+    | '/prototypes/list'
+    | '/prototypes/stamps'
+    | '/api/auth/$'
+    | '/api/images/$key'
+  id:
+    | '__root__'
+    | '/'
+    | '/prototypes/list'
+    | '/prototypes/stamps'
+    | '/api/auth/$'
+    | '/api/images/$key'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PrototypesListRoute: typeof PrototypesListRoute
+  PrototypesStampsRoute: typeof PrototypesStampsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiImagesKeyRoute: typeof ApiImagesKeyRoute
 }
@@ -83,6 +109,13 @@ declare module '@tanstack/react-router' {
       path: '/prototypes/list'
       fullPath: '/prototypes/list'
       preLoaderRoute: typeof PrototypesListRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/prototypes/stamps': {
+      id: '/prototypes/stamps'
+      path: '/prototypes/stamps'
+      fullPath: '/prototypes/stamps'
+      preLoaderRoute: typeof PrototypesStampsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -105,6 +138,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PrototypesListRoute: PrototypesListRoute,
+  PrototypesStampsRoute: PrototypesStampsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiImagesKeyRoute: ApiImagesKeyRoute,
 }

@@ -1,21 +1,28 @@
 import { ingestProductImage, storeCleanImage } from '#/lib/images/store-image'
+import { liftStudioBackdropBlob } from '#/lib/images/studio-backdrop'
 
 export async function cleanRemoteImage(itemId: string, imageUrl: string) {
   const copied = await ingestProductImage({ data: { itemId, url: imageUrl } })
   if (!copied.ok) return null
+  return (await cutout(itemId, copied.url)) ?? copied.url
+}
 
+export async function recutStoredImage(itemId: string) {
+  return cutout(itemId, `/api/images/o-${itemId}`)
+}
+
+async function cutout(itemId: string, url: string) {
   try {
-    const response = await fetch(copied.url)
-    if (!response.ok) return copied.url
-    const source = await response.blob()
-    const { removeBackground } = await import('@imgly/background-removal')
-    const cleaned = await removeBackground(source, { model: 'isnet_quint8' })
+    const response = await fetch(url)
+    if (!response.ok) return null
+    const lifted = await liftStudioBackdropBlob(await response.blob())
+    if (!lifted) return null
     const stored = await storeCleanImage({
-      data: { itemId, imageBase64: await blobToBase64(cleaned) },
+      data: { itemId, imageBase64: await blobToBase64(lifted) },
     })
-    return stored.ok ? stored.url : copied.url
+    return stored.ok ? stored.url : null
   } catch {
-    return copied.url
+    return null
   }
 }
 

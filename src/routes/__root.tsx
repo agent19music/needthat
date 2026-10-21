@@ -12,6 +12,7 @@ import arcCss from '@/components/arc/foundation.css?url'
 import appCss from '../styles.css?url'
 
 import { AccountMenu } from '#/components/account-menu'
+import { SiteFooter } from '#/components/site-footer'
 
 const themeScript = `try {const saved = localStorage.getItem("theme");const dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.dataset.theme = dark ? "dark" : "light";} catch {}`
 
@@ -58,7 +59,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <AccountMenu />
-        {children}
+        <div className="flex min-h-dvh flex-col">
+          <div className="flex-1">{children}</div>
+          <SiteFooter />
+        </div>
         <TanStackDevtools
           config={{
             position: 'bottom-right',

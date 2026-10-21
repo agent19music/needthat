@@ -17,7 +17,10 @@ import { ItemEditor } from '#/components/wishlist/item-editor'
 import type { EditorDraft } from '#/components/wishlist/item-editor'
 import { ProductSearch } from '#/components/wishlist/product-search'
 import type { ProductCandidate } from '#/lib/discovery/candidates'
-import { cleanRemoteImage } from '#/lib/images/clean-remote-image'
+import {
+  cleanRemoteImage,
+  recutStoredImage,
+} from '#/lib/images/clean-remote-image'
 import {
   deleteGuestItem,
   GuestStoreError,
@@ -35,7 +38,9 @@ export function WishlistScreen() {
   const [categories, setCategories] = useState<Array<GuestCategory>>([])
   const [ready, setReady] = useState(false)
   const [storageError, setStorageError] = useState<string | null>(null)
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    null,
+  )
   const [query, setQuery] = useState('')
   const [editor, setEditor] = useState<EditorDraft | null>(null)
   const [confirmItem, setConfirmItem] = useState<GuestItem | null>(null)
@@ -54,6 +59,26 @@ export function WishlistScreen() {
         setItems(loadedItems)
         setCategories(loadedCategories)
         setReady(true)
+        void refreshStaleCutouts(
+          loadedItems,
+          () => cancelled,
+          (itemId, url, previousUrl) => {
+            setItems((current) => {
+              const existing = current.find((entry) => entry.id === itemId)
+              if (
+                !existing ||
+                existing.image ||
+                existing.imageUrl !== previousUrl
+              )
+                return current
+              const next = { ...existing, imageUrl: url, updatedAt: Date.now() }
+              void saveGuestItem(next)
+              return current.map((entry) =>
+                entry.id === itemId ? next : entry,
+              )
+            })
+          },
+        )
       })
       .catch((error: unknown) => {
         if (cancelled) return
@@ -67,13 +92,15 @@ export function WishlistScreen() {
 
   useEffect(() => {
     return () => {
-      if (removalTimer.current !== null) window.clearTimeout(removalTimer.current)
+      if (removalTimer.current !== null)
+        window.clearTimeout(removalTimer.current)
     }
   }, [])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k')
+        return
       if (editor || confirmItem || categoryOpen) return
       event.preventDefault()
       setCommandOpen((open) => !open)
@@ -85,10 +112,13 @@ export function WishlistScreen() {
   const visibleItems = items.filter((item) =>
     selectedCategoryId === null ? true : item.categoryId === selectedCategoryId,
   )
-  const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null
+  const selectedCategory =
+    categories.find((category) => category.id === selectedCategoryId) ?? null
 
   const commands = useMemo<Array<CommandItem>>(() => {
-    const existing = new Set(categories.map((category) => category.name.toLowerCase()))
+    const existing = new Set(
+      categories.map((category) => category.name.toLowerCase()),
+    )
     return [
       { id: 'all', label: 'All items', group: 'Categories' },
       ...categories.map((category) => ({
@@ -97,14 +127,14 @@ export function WishlistScreen() {
         group: 'Categories',
       })),
       { id: 'new-category', label: 'New category', group: 'Create' },
-      ...SUGGESTED_CATEGORIES.filter((name) => !existing.has(name.toLowerCase())).map(
-        (name) => ({
-          id: `suggest:${name}`,
-          label: name,
-          description: 'New category',
-          group: 'Create',
-        }),
-      ),
+      ...SUGGESTED_CATEGORIES.filter(
+        (name) => !existing.has(name.toLowerCase()),
+      ).map((name) => ({
+        id: `suggest:${name}`,
+        label: name,
+        description: 'New category',
+        group: 'Create',
+      })),
       { id: 'add', label: 'Add an item', group: 'Actions' },
     ]
   }, [categories])
@@ -121,7 +151,8 @@ export function WishlistScreen() {
   }
 
   function removeItem(item: GuestItem) {
-    if (pendingRemoval && pendingRemoval.id !== item.id) commitRemoval(pendingRemoval)
+    if (pendingRemoval && pendingRemoval.id !== item.id)
+      commitRemoval(pendingRemoval)
     if (removalTimer.current !== null) window.clearTimeout(removalTimer.current)
     setPendingRemoval(item)
     setItems((current) => current.filter((entry) => entry.id !== item.id))
@@ -155,7 +186,9 @@ export function WishlistScreen() {
       updatedAt: Date.now(),
     }
     const previous = items
-    setItems((current) => current.map((entry) => (entry.id === item.id ? next : entry)))
+    setItems((current) =>
+      current.map((entry) => (entry.id === item.id ? next : entry)),
+    )
     try {
       await saveGuestItem(next)
       setStorageError(null)
@@ -169,7 +202,11 @@ export function WishlistScreen() {
     const trimmed = name.trim()
     if (!trimmed) return 'Add a name.'
     if (trimmed.length > 40) return 'Keep the name under 40 characters.'
-    if (categories.some((category) => category.name.toLowerCase() === trimmed.toLowerCase())) {
+    if (
+      categories.some(
+        (category) => category.name.toLowerCase() === trimmed.toLowerCase(),
+      )
+    ) {
       return 'You already have that category.'
     }
     const category: GuestCategory = {
@@ -234,7 +271,9 @@ export function WishlistScreen() {
           <button
             key={category.id}
             type="button"
-            aria-current={selectedCategoryId === category.id ? 'page' : undefined}
+            aria-current={
+              selectedCategoryId === category.id ? 'page' : undefined
+            }
             onClick={() => setSelectedCategoryId(category.id)}
           >
             {category.name}
@@ -258,7 +297,8 @@ export function WishlistScreen() {
             <HeatWord />
           </h1>
           <p className="wishlist-note mt-3">
-            Saved on this browser. It is not backed up and will not appear on another device.
+            Saved on this browser. It is not backed up and will not appear on
+            another device.
           </p>
         </header>
 
@@ -283,13 +323,17 @@ export function WishlistScreen() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => openEditor(emptyDraft(query.trim(), selectedCategoryId))}
+                onClick={() =>
+                  openEditor(emptyDraft(query.trim(), selectedCategoryId))
+                }
               >
                 Add details
               </Button>
             </div>
           ) : (
-            <p className="wishlist-note">Press Ctrl K to switch category or add one.</p>
+            <p className="wishlist-note">
+              Press Ctrl K to switch category or add one.
+            </p>
           )}
         </div>
 
@@ -342,10 +386,21 @@ export function WishlistScreen() {
                 if (!url || url === sourceUrl) return
                 setItems((current) => {
                   const existing = current.find((entry) => entry.id === itemId)
-                  if (!existing || existing.image || existing.imageUrl !== sourceUrl) return current
-                  const next = { ...existing, imageUrl: url, updatedAt: Date.now() }
+                  if (
+                    !existing ||
+                    existing.image ||
+                    existing.imageUrl !== sourceUrl
+                  )
+                    return current
+                  const next = {
+                    ...existing,
+                    imageUrl: url,
+                    updatedAt: Date.now(),
+                  }
                   void saveGuestItem(next)
-                  return current.map((entry) => (entry.id === itemId ? next : entry))
+                  return current.map((entry) =>
+                    entry.id === itemId ? next : entry,
+                  )
                 })
               })
             }
@@ -363,7 +418,10 @@ export function WishlistScreen() {
         }}
       >
         {confirmItem ? (
-          <DialogContent title="Remove this item?" description={confirmItem.title}>
+          <DialogContent
+            title="Remove this item?"
+            description={confirmItem.title}
+          >
             <div className="dialog-actions">
               <DialogClose asChild>
                 <Button type="button" variant="secondary">
@@ -493,7 +551,10 @@ function ItemCard({
           items={[
             { label: 'Edit details', onSelect: onEdit },
             {
-              label: item.status === 'purchased' ? 'Mark as wanted' : 'Mark purchased',
+              label:
+                item.status === 'purchased'
+                  ? 'Mark as wanted'
+                  : 'Mark purchased',
               onSelect: onTogglePurchased,
             },
             {
@@ -517,8 +578,14 @@ function ItemCard({
             <Button type="button" variant="secondary" onClick={onEdit}>
               Edit details
             </Button>
-            <Button type="button" variant="secondary" onClick={onTogglePurchased}>
-              {item.status === 'purchased' ? 'Mark as wanted' : 'Mark purchased'}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onTogglePurchased}
+            >
+              {item.status === 'purchased'
+                ? 'Mark as wanted'
+                : 'Mark purchased'}
             </Button>
           </div>
         </div>
@@ -588,4 +655,28 @@ function useObjectUrl(blob: Blob | null) {
 function messageFrom(error: unknown) {
   if (error instanceof GuestStoreError) return error.message
   return 'The wishlist could not be saved on this browser.'
+}
+
+async function refreshStaleCutouts(
+  items: Array<GuestItem>,
+  cancelled: () => boolean,
+  apply: (itemId: string, url: string, previousUrl: string) => void,
+) {
+  const stale = items.filter((item) => {
+    if (item.image || !item.imageUrl) return false
+    return (
+      item.imageUrl === `/api/images/c-${item.id}` ||
+      item.imageUrl === `/api/images/c-${item.id}-v2` ||
+      item.imageUrl === `/api/images/c-${item.id}-v3` ||
+      item.imageUrl === `/api/images/c-${item.id}-v4`
+    )
+  })
+  for (const item of stale) {
+    if (cancelled()) return
+    const previousUrl = item.imageUrl
+    if (!previousUrl) continue
+    const url = await recutStoredImage(item.id)
+    if (!url || cancelled()) continue
+    apply(item.id, url, previousUrl)
+  }
 }
