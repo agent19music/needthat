@@ -16,6 +16,7 @@ import { HeatWord } from '#/components/heat-word'
 import { ItemEditor } from '#/components/wishlist/item-editor'
 import type { EditorDraft } from '#/components/wishlist/item-editor'
 import { ProductSearch } from '#/components/wishlist/product-search'
+import { Stamp } from '#/components/wishlist/stamp'
 import type { ProductCandidate } from '#/lib/discovery/candidates'
 import {
   cleanRemoteImage,
@@ -49,7 +50,12 @@ export function WishlistScreen() {
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
   const [pendingRemoval, setPendingRemoval] = useState<GuestItem | null>(null)
+  const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const removalTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (localStorage.getItem('wishlist-layout') === 'list') setLayout('list')
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -256,7 +262,13 @@ export function WishlistScreen() {
     }
   }
 
+  function chooseLayout(next: 'grid' | 'list') {
+    setLayout(next)
+    localStorage.setItem('wishlist-layout', next)
+  }
+
   return (
+    <div className="wishlist-page" data-layout={layout}>
     <div className="wishlist-shell">
       <nav className="category-nav" aria-label="Categories">
         <p className="category-nav-label">Categories</p>
@@ -337,6 +349,25 @@ export function WishlistScreen() {
           )}
         </div>
 
+        <div className="layout-switch-row">
+          <div className="layout-switch" role="group" aria-label="Layout">
+            <button
+              type="button"
+              aria-pressed={layout === 'grid'}
+              onClick={() => chooseLayout('grid')}
+            >
+              Grid
+            </button>
+            <button
+              type="button"
+              aria-pressed={layout === 'list'}
+              onClick={() => chooseLayout('list')}
+            >
+              List
+            </button>
+          </div>
+        </div>
+
         {!ready ? (
           <p className="wishlist-note mt-8">Loading your list…</p>
         ) : visibleItems.length === 0 ? (
@@ -345,7 +376,7 @@ export function WishlistScreen() {
               ? `Nothing in ${selectedCategory.name} yet.`
               : 'Describe something above and pick a match, or add the details yourself.'}
           </p>
-        ) : (
+        ) : layout === 'grid' ? (
           <ul className="mt-8 grid grid-cols-2 items-stretch gap-x-4 gap-y-8 sm:grid-cols-3">
             {visibleItems.map((item) => (
               <li key={item.id} className="flex min-w-0">
@@ -358,6 +389,21 @@ export function WishlistScreen() {
                   }}
                 />
               </li>
+            ))}
+          </ul>
+        ) : (
+          <ul className="stamp-list">
+            {visibleItems.map((item, index) => (
+              <AlbumRow
+                key={item.id}
+                item={item}
+                tilt={index % 2 === 0 ? 'left' : 'right'}
+                onTogglePurchased={() => {
+                  void togglePurchased(item)
+                }}
+                onEdit={() => openEditor(draftFromItem(item))}
+                onAskRemove={() => setConfirmItem(item)}
+              />
             ))}
           </ul>
         )}
@@ -509,7 +555,76 @@ export function WishlistScreen() {
         </div>
       ) : null}
     </div>
+    </div>
   )
+}
+
+function AlbumRow({
+  item,
+  tilt,
+  onTogglePurchased,
+  onEdit,
+  onAskRemove,
+}: {
+  item: GuestItem
+  tilt: 'left' | 'right'
+  onTogglePurchased: () => void
+  onEdit: () => void
+  onAskRemove: () => void
+}) {
+  const blobUrl = useObjectUrl(item.image)
+  const preview = blobUrl ?? item.imageUrl ?? undefined
+  const owned = item.status === 'purchased'
+  const title = clipWords(item.title)
+  const source = item.brand.trim()
+
+  return (
+    <li className="album-row">
+      <button
+        type="button"
+        className="album-hit"
+        aria-pressed={owned}
+        aria-label={`${item.title}${source ? `, ${source}` : ''}${owned ? ', got it' : ''}`}
+        onClick={onTogglePurchased}
+      >
+        <Stamp src={preview} tilt={tilt} flat={owned} />
+        <span className="stamp-copy">
+          <span
+            className="stamp-title"
+            title={title === item.title ? undefined : item.title}
+          >
+            {title}
+          </span>
+          <span className="stamp-meta">
+            {owned ? <span className="stamp-got">Got it</span> : null}
+            {source}
+          </span>
+        </span>
+      </button>
+      <DropdownMenu
+        label="Edit"
+        items={[
+          { label: 'Edit details', onSelect: onEdit },
+          {
+            label: owned ? 'Mark as wanted' : 'Mark purchased',
+            onSelect: onTogglePurchased,
+          },
+          {
+            label: 'Remove',
+            destructive: true,
+            separatorBefore: true,
+            onSelect: onAskRemove,
+          },
+        ]}
+      />
+    </li>
+  )
+}
+
+function clipWords(title: string, count = 6) {
+  const words = title.trim().split(/\s+/)
+  if (words.length <= count) return title
+  return `${words.slice(0, count).join(' ')}…`
 }
 
 function ItemCard({
