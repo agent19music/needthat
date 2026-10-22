@@ -342,11 +342,7 @@ export function WishlistScreen() {
                 Add details
               </Button>
             </div>
-          ) : (
-            <p className="wishlist-note">
-              Press Ctrl K to switch category or add one.
-            </p>
-          )}
+          ) : null}
         </div>
 
         <div className="layout-switch-row">

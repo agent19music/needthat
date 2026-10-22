@@ -37,14 +37,7 @@ export function discoverProducts(query: string): Promise<DiscoveryResult> {
 
       const fallback = await searchMarket(normalized, FALLBACK_COUNTRY, language)
       if (!fallback.ok) return fallback
-      return {
-        ok: true,
-        candidates: fallback.candidates,
-        note:
-          fallback.candidates.length === 0
-            ? null
-            : `No listings came back for ${country.toUpperCase()}. These are US matches, and they do not mean the item is available locally.`,
-      }
+      return { ok: true, candidates: fallback.candidates, note: null }
     } catch (error) {
       Sentry.captureException(error)
       return {

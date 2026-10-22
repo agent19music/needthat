@@ -13,8 +13,13 @@ import appCss from '../styles.css?url'
 
 import { AccountMenu } from '#/components/account-menu'
 import { SiteFooter } from '#/components/site-footer'
-
-const themeScript = `try {const saved = localStorage.getItem("theme");const dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.dataset.theme = dark ? "dark" : "light";} catch {}`
+import {
+  iconLinks,
+  siteName,
+  themeColor,
+  themeColorScript,
+  themeScript,
+} from '#/lib/site'
 
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -33,7 +38,15 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: '#needthat',
+        title: siteName,
+      },
+      {
+        name: 'theme-color',
+        content: themeColor.light,
+      },
+      {
+        name: 'color-scheme',
+        content: 'light dark',
       },
     ],
     links: [
@@ -45,6 +58,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         rel: 'stylesheet',
         href: appCss,
       },
+      ...iconLinks,
     ],
   }),
   shellComponent: RootDocument,
@@ -56,6 +70,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: themeColorScript }} />
       </head>
       <body>
         <AccountMenu />
