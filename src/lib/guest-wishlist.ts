@@ -1,3 +1,5 @@
+import { compareByPosition } from '#/lib/wishlist/order'
+
 export type ItemStatus = 'unresolved' | 'purchased'
 
 export type GuestCategory = {
@@ -17,6 +19,10 @@ export type GuestItem = {
   image: Blob | null
   imageType: string | null
   imageUrl: string | null
+  /** Optional so items saved before Stacks still load. */
+  position?: number | null
+  purchasedAt?: number | null
+  price?: { amount: number; currency: string } | null
   createdAt: number
   updatedAt: number
 }
@@ -47,8 +53,13 @@ export async function loadGuestItems(): Promise<Array<GuestItem>> {
       ...item,
       imageUrl: item.imageUrl ?? null,
       categoryId: item.categoryId ?? null,
+      position: item.position ?? null,
+      purchasedAt:
+        item.purchasedAt ??
+        (item.status === 'purchased' ? item.updatedAt : null),
+      price: item.price ?? null,
     }))
-    .sort((a, b) => b.createdAt - a.createdAt)
+    .sort(compareByPosition)
 }
 
 export async function loadGuestCategories(): Promise<Array<GuestCategory>> {

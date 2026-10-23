@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
-const itemInput = z.object({
+export const itemInput = z.object({
   id: z.string().trim().min(1).max(80),
   title: z.string().trim().min(1).max(200),
   brand: z.string().trim().max(120).default(''),
@@ -41,6 +41,17 @@ export const deleteAccountItem = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const { removeAccountItem } = await import('./account.server')
     return removeAccountItem(data.id)
+  })
+
+export const reorderItemsInput = z.object({
+  ids: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
+})
+
+export const reorderAccountItemsFn = createServerFn({ method: 'POST' })
+  .validator(reorderItemsInput)
+  .handler(async ({ data }) => {
+    const { reorderAccountItems } = await import('./account.server')
+    return reorderAccountItems(data.ids)
   })
 
 export const saveAccountCategory = createServerFn({ method: 'POST' })

@@ -97,10 +97,15 @@ export const listItems = sqliteTable(
     }),
     selectedImageId: text('selected_image_id'),
     sourceUrl: text('source_url'),
+    /** Manual order inside a stack (Arrange). Lower comes first; null sorts after, newest first. */
+    position: integer('position'),
+    /** Set when status becomes purchased, cleared when it goes back to wanted. Drives the Got stamp date. */
+    purchasedAt: integer('purchased_at', { mode: 'timestamp' }),
     ...timestamps,
   },
   (table) => [
     index('list_items_list_id_idx').on(table.listId),
+    index('list_items_list_position_idx').on(table.listId, table.position),
     uniqueIndex('list_items_list_client_id_idx').on(table.listId, table.clientId),
   ],
 )
