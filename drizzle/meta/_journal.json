@@ -15,6 +15,13 @@
       "when": 1792523836733,
       "tag": "0001_thankful_morg",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792666778119,
+      "tag": "0002_auth_profile",
+      "breakpoints": true
     }
   ]
 }

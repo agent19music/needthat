@@ -7,6 +7,7 @@
 .control:focus-visible { border-color: var(--foreground); box-shadow: 0 0 0 3px var(--focus-ring); outline: 2px solid transparent; outline-offset: 2px; }
 .control[aria-invalid="true"] { border-color: var(--danger); }
 .control:disabled { cursor: not-allowed; background: var(--surface-muted); opacity: .6; }
+@media (pointer: coarse) { .control { font-size: 1rem; } }
 /* The row's space is padding inside the clipped slot, so the height animates from a true zero. */
 .messageSlot { display: block; overflow: hidden; }
 .hint, .error { display: block; padding-top: var(--space-2); font-size: var(--text-xs); line-height: var(--leading-body); }

@@ -1,0 +1,54 @@
+.page {
+  width: 100%;
+  max-width: 480px;
+  margin-inline: auto;
+  padding: 96px 16px 48px;
+  display: grid;
+  gap: 24px;
+}
+
+.page > * {
+  min-width: 0;
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 500;
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
+}
+
+.form,
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.links a {
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .links a:hover {
+    text-decoration: underline;
+  }
+}
+
+.note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}

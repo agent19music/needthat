@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { ImageIcon } from '@phosphor-icons/react'
 
 import { Button } from '#/components/arc/button/button'
+import { CopyButton } from '#/components/arc/copy-button/copy-button'
 import { Card } from '#/components/arc/card/card'
 import {
   Dialog,
@@ -12,6 +14,7 @@ import { CommandPalette } from '#/components/arc/command-palette/command-palette
 import type { CommandItem } from '#/components/arc/command-palette/command-palette'
 import { DropdownMenu } from '#/components/arc/dropdown-menu/dropdown-menu'
 import { Input } from '#/components/arc/input/input'
+import { commandMenuEvent } from '#/components/account-menu'
 import { HeatWord } from '#/components/heat-word'
 import { ItemEditor } from '#/components/wishlist/item-editor'
 import type { EditorDraft } from '#/components/wishlist/item-editor'
@@ -23,18 +26,30 @@ import {
   recutStoredImage,
 } from '#/lib/images/clean-remote-image'
 import {
-  deleteGuestItem,
-  GuestStoreError,
-  loadGuestCategories,
-  loadGuestItems,
-  saveGuestCategory,
-  saveGuestItem,
-} from '#/lib/guest-wishlist'
+  deleteActiveItem,
+  importGuestWishlist,
+  loadActiveWishlist,
+  saveActiveCategory,
+  saveActiveItem,
+} from '#/lib/account-wishlist'
+import { authClient } from '#/lib/auth-client'
+import { GuestStoreError } from '#/lib/guest-wishlist'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 
 const SUGGESTED_CATEGORIES = ['Clothes', 'Tech', 'Subscriptions']
 
+function categoryTag(name: string) {
+  return `#${name.trim().toLowerCase()}`
+}
+
 export function WishlistScreen() {
+  const { data: session, isPending } = authClient.useSession()
+  const signedIn = Boolean(session?.user)
+  const userId = session?.user?.id
+  const username = session?.user?.username ?? ''
+  const signedInRef = useRef(signedIn)
+  signedInRef.current = signedIn
+  const [origin, setOrigin] = useState('')
   const [items, setItems] = useState<Array<GuestItem>>([])
   const [categories, setCategories] = useState<Array<GuestCategory>>([])
   const [ready, setReady] = useState(false)
@@ -58,43 +73,71 @@ export function WishlistScreen() {
   }, [])
 
   useEffect(() => {
+    setOrigin(window.location.origin)
+  }, [])
+
+  useEffect(() => {
+    if (isPending) return
     let cancelled = false
-    Promise.all([loadGuestItems(), loadGuestCategories()])
-      .then(([loadedItems, loadedCategories]) => {
-        if (cancelled) return
-        setItems(loadedItems)
-        setCategories(loadedCategories)
+    setReady(false)
+    const load = async () => {
+      const loaded = await loadActiveWishlist(Boolean(userId))
+      if (cancelled) return
+      if (!loaded.ok) {
+        setStorageError(loaded.message)
+        setItems([])
+        setCategories([])
         setReady(true)
-        void refreshStaleCutouts(
-          loadedItems,
-          () => cancelled,
-          (itemId, url, previousUrl) => {
-            setItems((current) => {
-              const existing = current.find((entry) => entry.id === itemId)
-              if (
-                !existing ||
-                existing.image ||
-                existing.imageUrl !== previousUrl
-              )
-                return current
-              const next = { ...existing, imageUrl: url, updatedAt: Date.now() }
-              void saveGuestItem(next)
-              return current.map((entry) =>
-                entry.id === itemId ? next : entry,
-              )
-            })
-          },
-        )
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return
-        setStorageError(messageFrom(error))
-        setReady(true)
-      })
+        return
+      }
+      setItems(loaded.items)
+      setCategories(loaded.categories)
+      setReady(true)
+      setStorageError(null)
+      if (userId) {
+        try {
+          const imported = await importGuestWishlist(userId)
+          if (imported && !cancelled) {
+            const refreshed = await loadActiveWishlist(true)
+            if (!cancelled && refreshed.ok) {
+              setItems(refreshed.items)
+              setCategories(refreshed.categories)
+            }
+          }
+        } catch (error) {
+          if (!cancelled) setStorageError(messageFrom(error))
+        }
+      }
+      void refreshStaleCutouts(
+        loaded.items,
+        () => cancelled,
+        (itemId, url, previousUrl) => {
+          setItems((current) => {
+            const existing = current.find((entry) => entry.id === itemId)
+            if (
+              !existing ||
+              existing.image ||
+              existing.imageUrl !== previousUrl
+            )
+              return current
+            const next = { ...existing, imageUrl: url, updatedAt: Date.now() }
+            void saveActiveItem(signedInRef.current, next)
+            return current.map((entry) =>
+              entry.id === itemId ? next : entry,
+            )
+          })
+        },
+      )
+    }
+    load().catch((error: unknown) => {
+      if (cancelled) return
+      setStorageError(messageFrom(error))
+      setReady(true)
+    })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [isPending, userId])
 
   useEffect(() => {
     return () => {
@@ -104,15 +147,22 @@ export function WishlistScreen() {
   }, [])
 
   useEffect(() => {
+    function toggleCommandMenu() {
+      if (editor || confirmItem || categoryOpen) return
+      setCommandOpen((open) => !open)
+    }
     function onKeyDown(event: KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k')
         return
-      if (editor || confirmItem || categoryOpen) return
       event.preventDefault()
-      setCommandOpen((open) => !open)
+      toggleCommandMenu()
     }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener(commandMenuEvent, toggleCommandMenu)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener(commandMenuEvent, toggleCommandMenu)
+    }
   }, [editor, confirmItem, categoryOpen])
 
   const visibleItems = items.filter((item) =>
@@ -129,7 +179,7 @@ export function WishlistScreen() {
       { id: 'all', label: 'All items', group: 'Categories' },
       ...categories.map((category) => ({
         id: `category:${category.id}`,
-        label: category.name,
+        label: categoryTag(category.name),
         group: 'Categories',
       })),
       { id: 'new-category', label: 'New category', group: 'Create' },
@@ -137,7 +187,7 @@ export function WishlistScreen() {
         (name) => !existing.has(name.toLowerCase()),
       ).map((name) => ({
         id: `suggest:${name}`,
-        label: name,
+        label: categoryTag(name),
         description: 'New category',
         group: 'Create',
       })),
@@ -146,7 +196,7 @@ export function WishlistScreen() {
   }, [categories])
 
   function commitRemoval(item: GuestItem) {
-    void deleteGuestItem(item.id).catch((error: unknown) => {
+    void deleteActiveItem(signedIn, item.id).catch((error: unknown) => {
       setItems((current) =>
         [item, ...current.filter((entry) => entry.id !== item.id)].sort(
           (a, b) => b.createdAt - a.createdAt,
@@ -196,7 +246,7 @@ export function WishlistScreen() {
       current.map((entry) => (entry.id === item.id ? next : entry)),
     )
     try {
-      await saveGuestItem(next)
+      await saveActiveItem(signedIn, next)
       setStorageError(null)
     } catch (error) {
       setItems(previous)
@@ -221,7 +271,7 @@ export function WishlistScreen() {
       createdAt: Date.now(),
     }
     try {
-      await saveGuestCategory(category)
+      await saveActiveCategory(signedIn, category)
     } catch (error) {
       return messageFrom(error)
     }
@@ -277,7 +327,7 @@ export function WishlistScreen() {
           aria-current={selectedCategoryId === null ? 'page' : undefined}
           onClick={() => setSelectedCategoryId(null)}
         >
-          All
+          #all
         </button>
         {categories.map((category) => (
           <button
@@ -288,7 +338,7 @@ export function WishlistScreen() {
             }
             onClick={() => setSelectedCategoryId(category.id)}
           >
-            {category.name}
+            {categoryTag(category.name)}
           </button>
         ))}
         <button
@@ -302,16 +352,57 @@ export function WishlistScreen() {
           New category
         </button>
       </nav>
+      <div className="category-menu">
+        <DropdownMenu
+          align="start"
+          label={
+            selectedCategory ? categoryTag(selectedCategory.name) : '#all'
+          }
+          items={[
+            {
+              label: '#all',
+              onSelect: () => setSelectedCategoryId(null),
+            },
+            ...categories.map((category) => ({
+              label: categoryTag(category.name),
+              onSelect: () => setSelectedCategoryId(category.id),
+            })),
+            {
+              label: 'New category',
+              separatorBefore: true,
+              onSelect: () => {
+                setCategoryName('')
+                setCategoryError(null)
+                setCategoryOpen(true)
+              },
+            },
+          ]}
+        />
+      </div>
 
       <main>
-        <header className="mb-8 pe-28">
+        <header className="mb-8 md:pe-28">
           <h1>
             <HeatWord />
           </h1>
           <p className="wishlist-note mt-3">
-            Saved on this browser. It is not backed up and will not appear on
-            another device.
+            {signedIn
+              ? 'Saved to your account.'
+              : 'Saved on this browser. It is not backed up and will not appear on another device.'}
           </p>
+          {signedIn && username && origin ? (
+            <div className="mt-4">
+              <CopyButton
+                value={`${origin}/u/${username}`}
+                label="Copy share link"
+              />
+            </div>
+          ) : null}
+          {signedIn && !username ? (
+            <p className="wishlist-note mt-3">
+              <Link to="/account">Choose a username</Link> to share this list.
+            </p>
+          ) : null}
         </header>
 
         {storageError ? (
@@ -345,33 +436,46 @@ export function WishlistScreen() {
           ) : null}
         </div>
 
-        <div className="layout-switch-row">
-          <div className="layout-switch" role="group" aria-label="Layout">
-            <button
-              type="button"
-              aria-pressed={layout === 'grid'}
-              onClick={() => chooseLayout('grid')}
-            >
-              Grid
-            </button>
-            <button
-              type="button"
-              aria-pressed={layout === 'list'}
-              onClick={() => chooseLayout('list')}
-            >
-              List
-            </button>
+        {ready && visibleItems.length > 0 ? (
+          <div className="layout-switch-row">
+            <div className="layout-switch" role="group" aria-label="Layout">
+              <button
+                type="button"
+                aria-pressed={layout === 'grid'}
+                onClick={() => chooseLayout('grid')}
+              >
+                Grid
+              </button>
+              <button
+                type="button"
+                aria-pressed={layout === 'list'}
+                onClick={() => chooseLayout('list')}
+              >
+                List
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {!ready ? (
           <p className="wishlist-note mt-8">Loading your list…</p>
         ) : visibleItems.length === 0 ? (
-          <p className="wishlist-note mt-8">
-            {selectedCategory
-              ? `Nothing in ${selectedCategory.name} yet.`
-              : 'Describe something above and pick a match, or add the details yourself.'}
-          </p>
+          <div className="empty-state">
+            <img
+              src="/empty-state-needthat.webp"
+              alt=""
+              width={1684}
+              height={2528}
+            />
+            <div className="empty-state-copy">
+              <p className="empty-state-title">Hmm, nothing here yet</p>
+              <p className="empty-state-hint">
+                {selectedCategory
+                  ? `Nothing in ${categoryTag(selectedCategory.name)} yet.`
+                  : "Let's get your wishlist started"}
+              </p>
+            </div>
+          </div>
         ) : layout === 'grid' ? (
           <ul className="mt-8 grid grid-cols-2 items-stretch gap-x-4 gap-y-8 sm:grid-cols-3">
             {visibleItems.map((item) => (
@@ -413,7 +517,7 @@ export function WishlistScreen() {
         }}
         onSave={async (item) => {
           try {
-            await saveGuestItem(item)
+            await saveActiveItem(signedIn, item)
             setItems((current) =>
               [item, ...current.filter((entry) => entry.id !== item.id)].sort(
                 (a, b) => b.createdAt - a.createdAt,
@@ -439,7 +543,7 @@ export function WishlistScreen() {
                     imageUrl: url,
                     updatedAt: Date.now(),
                   }
-                  void saveGuestItem(next)
+                  void saveActiveItem(signedIn, next)
                   return current.map((entry) =>
                     entry.id === itemId ? next : entry,
                   )
@@ -495,6 +599,8 @@ export function WishlistScreen() {
               label="Name"
               value={categoryName}
               error={categoryError ?? undefined}
+              enterKeyHint="done"
+              start={<span className="category-hash" aria-hidden="true">#</span>}
               onChange={(event) => setCategoryName(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter') return
@@ -765,7 +871,8 @@ function useObjectUrl(blob: Blob | null) {
 
 function messageFrom(error: unknown) {
   if (error instanceof GuestStoreError) return error.message
-  return 'The wishlist could not be saved on this browser.'
+  if (error instanceof Error && error.message) return error.message
+  return 'The wishlist could not be saved.'
 }
 
 async function refreshStaleCutouts(

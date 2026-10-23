@@ -138,19 +138,20 @@ export function ProductSearch({
       (resultsMatch && (candidates.length > 0 || note || searchError)))
 
   return (
-    <div className="grid gap-2">
+    <div className="product-search grid gap-2">
       <div className="relative">
       <Input
         id={id}
         name={id}
         label={describeLabels[labelIndex] ?? describeLabels[0]}
-        description={open ? undefined : 'Press Enter for discovered matches.'}
+        description={open ? undefined : 'Press Enter for matches.'}
         error={error}
         value={value}
         aria-expanded={showList}
         aria-controls={`${id}-matches`}
         aria-autocomplete="list"
         placeholder="White Nike Shox"
+        enterKeyHint="search"
         className="describe-input"
         end={
           <button

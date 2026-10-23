@@ -1,0 +1,90 @@
+.page {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 96px 16px 64px;
+  display: grid;
+  gap: 48px;
+}
+
+.page > * {
+  min-width: 0;
+}
+
+.header {
+  display: grid;
+  gap: 8px;
+}
+
+.back {
+  width: fit-content;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .back:hover {
+    color: var(--foreground);
+  }
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 500;
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
+}
+
+.section {
+  display: grid;
+  gap: 16px;
+}
+
+h2 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  letter-spacing: var(--tracking-body);
+  line-height: var(--leading-body);
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.note,
+.link {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.link {
+  color: var(--foreground);
+}
+
+@media (min-width: 640px) {
+  .page {
+    padding: 112px 32px 64px;
+  }
+}

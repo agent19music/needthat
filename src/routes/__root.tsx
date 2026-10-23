@@ -35,7 +35,8 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
       {
         name: 'viewport',
-        content: 'width=device-width, initial-scale=1',
+        content:
+          'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content',
       },
       {
         title: siteName,
@@ -46,10 +47,17 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
       {
         name: 'color-scheme',
-        content: 'light dark',
+        content: 'light',
       },
     ],
     links: [
+      {
+        rel: 'preload',
+        href: '/fonts/pp-mori/PPMori-Regular.woff2',
+        as: 'font',
+        type: 'font/woff2',
+        crossOrigin: 'anonymous',
+      },
       {
         rel: 'stylesheet',
         href: arcCss,
@@ -66,7 +74,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />

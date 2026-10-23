@@ -1,15 +1,19 @@
 .field { display: grid; min-width: 0; }
 .control { position: relative; min-width: 0; }
-.end { position: absolute; inset-block: 0; inset-inline-end: 8px; display: flex; align-items: center; }
+.start, .end { position: absolute; inset-block: 0; display: flex; align-items: center; }
+.start { inset-inline-start: 8px; }
+.end { inset-inline-end: 8px; }
 .label { margin-bottom: var(--space-2); color: var(--foreground); font-size: var(--text-sm); font-weight: 500; line-height: var(--leading-body); }
 /* Focus answers with the border colour alone (no rings or halos); the field itself never changes size. */
 .input { width: 100%; min-height: var(--control-height-md); padding: 0 var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--foreground); font: inherit; font-size: var(--text-sm); line-height: var(--leading-body); letter-spacing: var(--tracking-body); outline: none; transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
+.input.withStart { min-height: 48px; padding-inline-start: 44px; }
 .input.withEnd { min-height: 48px; padding-inline-end: 52px; }
 .input::placeholder { color: var(--text-muted); }
 @media (hover: hover) and (pointer: fine) { .input:hover:not(:disabled, [aria-invalid="true"]) { border-color: var(--foreground); } }
 .input:focus-visible { border-color: var(--foreground); }
 .input[aria-invalid="true"] { border-color: var(--danger); }
 .input:disabled { cursor: not-allowed; opacity: .5; background: var(--surface-muted); }
+@media (pointer: coarse) { .input { font-size: 1rem; } }
 /* The row's space is padding inside the clipped slot, so the height animates from a true zero. */
 .messageSlot { display: block; overflow: hidden; }
 .description, .error { display: block; padding-top: var(--space-2); font-size: var(--text-xs); line-height: var(--leading-body); }

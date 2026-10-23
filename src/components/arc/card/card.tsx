@@ -7,6 +7,7 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/r
 import type { HTMLMotionProps, MotionProps, Transition, Variants } from "motion/react";
 import { X } from "lucide-react";
 import { motionTokens } from "@/lib/motion-tokens";
+import { useFineHover } from "#/lib/fine-hover";
 import styles from "./card.module.css";
 
 export interface CardProps extends HTMLAttributes<HTMLElement> {
@@ -76,6 +77,7 @@ function px(node: Element, value: string) {
 
 export function Card({ title, description, media, action, avatar, meta, status, details, open: openProp, defaultOpen = false, onOpenChange, children, className, style, ...props }: CardProps) {
   const reduced = useReducedMotion() ?? false;
+  const fineHover = useFineHover();
   const group = useId();
   const cardRef = useRef<HTMLElement>(null);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
@@ -141,9 +143,9 @@ export function Card({ title, description, media, action, avatar, meta, status, 
     className={[styles.card, className].filter(Boolean).join(" ")}
     style={{ ...style, borderRadius: geometry.card ?? style?.borderRadius }}
     data-hover={hovered || undefined}
-    whileHover={reduced ? undefined : { y: -2 }}
-    onHoverStart={() => setHovered(true)}
-    onHoverEnd={() => setHovered(false)}
+    whileHover={reduced || !fineHover ? undefined : { y: -2 }}
+    onHoverStart={fineHover ? () => setHovered(true) : undefined}
+    onHoverEnd={fineHover ? () => setHovered(false) : undefined}
     {...shared("card", "card")}
     transition={{ default: spring.snappy, layout: settle }}
   >

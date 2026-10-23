@@ -10,6 +10,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
   description?: string;
   error?: string;
+  start?: ReactNode;
   end?: ReactNode;
 }
 
@@ -68,7 +69,7 @@ function MessageRow({ id, text, className, alert }: { id?: string; text: string;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, description, error, end, id, className, ...props }, ref,
+  { label, description, error, start, end, id, className, ...props }, ref,
 ) {
   const generatedId = useId();
   const controlId = id ?? generatedId;
@@ -78,7 +79,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return <div className={styles.field}>
     <label className={styles.label} htmlFor={controlId}><MotionText text={label} /></label>
     <div className={styles.control}>
-      <input {...props} id={controlId} ref={ref} className={[styles.input, end ? styles.withEnd : "", className].filter(Boolean).join(" ")} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy}/>
+      <input {...props} id={controlId} ref={ref} className={[styles.input, start ? styles.withStart : "", end ? styles.withEnd : "", className].filter(Boolean).join(" ")} aria-invalid={error ? true : props["aria-invalid"]} aria-describedby={describedBy}/>
+      {start ? <div className={styles.start}>{start}</div> : null}
       {end ? <div className={styles.end}>{end}</div> : null}
     </div>
     <FieldMessage id={hintId} text={description} className={styles.description} />

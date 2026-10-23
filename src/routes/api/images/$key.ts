@@ -6,7 +6,7 @@ export const Route = createFileRoute('/api/images/$key')({
   server: {
     handlers: {
       GET: async ({ params }) => {
-        if (!/^[oc]-[A-Za-z0-9-]+$/.test(params.key)) {
+        if (!/^[aocg]-[A-Za-z0-9-]{1,160}$/.test(params.key)) {
           return new Response('Not found', { status: 404 })
         }
         const object = await getImageBucket().get(params.key)

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, type ElementType } from 'react'
 import { motion, type ValueAnimationTransition } from 'motion/react'
 
+import { useFineHover } from '#/lib/fine-hover'
 import { cn } from '#/lib/utils'
 
 interface UnderlineProps {
@@ -57,6 +58,7 @@ const UnderlineToBackground = ({
   ...props
 }: UnderlineProps) => {
   const textRef = useRef<HTMLSpanElement>(null)
+  const fineHover = useFineHover()
 
   // Create custom motion component based on the 'as' prop
   const MotionComponent = useMemo(() => motion.create(as ?? 'span'), [as])
@@ -112,7 +114,7 @@ const UnderlineToBackground = ({
       className={cn('relative inline-block cursor-pointer', className)}
       initial="initial"
       animate="initial"
-      whileHover="target"
+      whileHover={fineHover ? 'target' : undefined}
       ref={textRef}
       {...props}
     >

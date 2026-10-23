@@ -23,6 +23,7 @@
 .searchIcon, .itemIcon { display: grid; flex: none; place-items: center; color: var(--text-muted); }
 .searchIcon { width: 22px; height: 22px; }
 .searchRow input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); }
+@media (pointer: coarse) { .searchRow input { font-size: 1rem; } }
 .searchRow input::placeholder { color: var(--text-muted); }
 .searchRow input:focus-visible { outline: none; }
 
@@ -50,7 +51,7 @@
 
 /* The frame animates to the list height; the list keeps its own scroll. */
 .resultsFrame { overflow: hidden; }
-.results { position: relative; max-height: 342px; overflow: auto; padding: 6px 8px; }
+.results { position: relative; max-height: 342px; overflow: auto; overscroll-behavior: contain; padding: 6px 8px; }
 .highlight { position: absolute; top: 0; right: 8px; left: 8px; border-radius: 8px; background: var(--surface-muted); opacity: 0; pointer-events: none; }
 /* Groups are positioned so a row that pops out of the flow is placed against the same box it was measured in, even mid-glide. */
 .group { position: relative; }

@@ -66,7 +66,55 @@ export async function saveCleanImage(itemId: string, imageBase64: string) {
   )
 }
 
-function isSafeImageUrl(value: string) {
+export async function putImageObject(
+  key: string,
+  bytes: Uint8Array,
+  contentType: string,
+) {
+  await getImageBucket().put(key, bytes, {
+    httpMetadata: { contentType },
+  })
+  return `/api/images/${key}`
+}
+
+export function decodeImageBase64(imageBase64: string, maxBytes: number) {
+  try {
+    const bytes = Uint8Array.from(atob(imageBase64), (character) =>
+      character.charCodeAt(0),
+    )
+    if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) return null
+    const contentType = sniffImage(bytes)
+    if (!contentType) return null
+    return { bytes, contentType }
+  } catch {
+    return null
+  }
+}
+
+function sniffImage(bytes: Uint8Array) {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg'
+  }
+  if (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return 'image/png'
+  }
+  if (bytes.byteLength > 12) {
+    const riff = String.fromCharCode(...bytes.subarray(0, 4))
+    const webp = String.fromCharCode(...bytes.subarray(8, 12))
+    if (riff === 'RIFF' && webp === 'WEBP') return 'image/webp'
+  }
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    return 'image/gif'
+  }
+  return null
+}
+
+export function isSafeImageUrl(value: string) {
   let url: URL
   try {
     url = new URL(value)

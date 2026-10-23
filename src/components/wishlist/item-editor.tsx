@@ -144,6 +144,9 @@ function EditorForm({
       <Input
         label="Link"
         inputMode="url"
+        autoCapitalize="none"
+        autoCorrect="off"
+        enterKeyHint="go"
         value={sourceUrl}
         error={fieldError.sourceUrl}
         onChange={(event) => setSourceUrl(event.target.value)}
@@ -163,7 +166,7 @@ function EditorForm({
           { value: NONE, label: 'No category' },
           ...categories.map((category) => ({
             value: category.id,
-            label: category.name,
+            label: `#${category.name.trim().toLowerCase()}`,
           })),
         ]}
       />

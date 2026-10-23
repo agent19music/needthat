@@ -66,6 +66,29 @@ pnpm dlx shadcn@latest add button
 
 ## Setting up Better Auth
 
+Production domain: `https://nt.uzskicorp.agency`. The custom domain is declared in
+`wrangler.jsonc`; deploying applies that configuration.
+
+Create a Google OAuth **Web application** client with:
+
+| Environment | Authorized JavaScript origin | Authorized redirect URI |
+| --- | --- | --- |
+| Production | `https://nt.uzskicorp.agency` | `https://nt.uzskicorp.agency/api/auth/callback/google` |
+| Local | `http://localhost:3000` | `http://localhost:3000/api/auth/callback/google` |
+| Local alternate port | `http://localhost:3001` | `http://localhost:3001/api/auth/callback/google` |
+
+Set the deployed Worker's `BETTER_AUTH_URL` to `https://nt.uzskicorp.agency`,
+and configure `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET`
+as Worker secrets. Local `.dev.vars` keeps `BETTER_AUTH_URL` on the local port
+in use. Local secret files are not uploaded to production.
+
+For production builds, set `VITE_SITE_URL=https://nt.uzskicorp.agency` for canonical
+and sharing URLs. In Google Auth Platform, use `uzskicorp.agency` as the authorized
+domain when configuring production branding.
+
+Before deploying, replace the placeholder D1 database ID, provision the configured
+R2 bucket, and apply database migrations to the production database.
+
 1. Generate and set the `BETTER_AUTH_SECRET` environment variable in your `.env.local`:
 
    ```bash

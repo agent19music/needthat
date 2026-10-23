@@ -26,12 +26,29 @@ const timestamps = {
     .default(sql`(unixepoch())`),
 }
 
-export const lists = sqliteTable('lists', {
-  id: text('id').primaryKey(),
-  userId: text('user_id'),
-  name: text('name').notNull().default('Wishlist'),
-  ...timestamps,
-})
+export const lists = sqliteTable(
+  'lists',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id'),
+    name: text('name').notNull().default('Wishlist'),
+    ...timestamps,
+  },
+  (table) => [index('lists_user_id_idx').on(table.userId)],
+)
+
+export const categories = sqliteTable(
+  'categories',
+  {
+    id: text('id').primaryKey(),
+    listId: text('list_id')
+      .notNull()
+      .references(() => lists.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (table) => [index('categories_list_id_idx').on(table.listId)],
+)
 
 export const products = sqliteTable('products', {
   id: text('id').primaryKey(),
@@ -61,9 +78,11 @@ export const listItems = sqliteTable(
       .notNull()
       .references(() => lists.id, { onDelete: 'cascade' }),
     clientId: text('client_id'),
+    categoryId: text('category_id'),
     title: text('title').notNull(),
     brand: text('brand'),
     notes: text('notes'),
+    imageUrl: text('image_url'),
     preferences: text('preferences'),
     status: text('status', {
       enum: ['wanted', 'purchased', 'unresolved'],
