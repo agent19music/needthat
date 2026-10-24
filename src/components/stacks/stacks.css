@@ -346,7 +346,7 @@
 
 .stk-board {
   position: relative;
-  height: 520px;
+  height: 560px;
   overflow: hidden;
   border-radius: var(--radius-surface);
   background: var(--stk-board);
@@ -504,37 +504,50 @@
 }
 
 .stk-details {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16px;
-  margin-top: 16px;
-  padding: 14px 18px;
-  border: 1px solid var(--stk-border);
-  border-radius: var(--radius-panel);
+  display: grid;
+  grid-template-columns: 3.3fr 1fr;
+  gap: 28px;
+  margin-top: 22px;
+  padding: 0 6px;
+  font-size: 13px;
 }
 
 .stk-details dl {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
   gap: 28px;
   margin: 0;
 }
 
 .stk-details dt {
   color: var(--stk-muted);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .stk-details dd {
-  margin: 2px 0 0;
+  margin: 6px 0 0;
   font-size: 13px;
 }
 
 .stk-details-actions {
   display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
   gap: 8px;
+}
+
+@media (max-width: 767px) {
+  .stk-details {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .stk-details dl {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .stk-details-actions {
+    justify-content: flex-start;
+  }
 }
 
 .stk-mini-row {
@@ -984,8 +997,13 @@ button.stk-chip {
 }
 
 @media (max-width: 767px) {
-  .stk-board {
-    height: 450px;
+  .stk-board:not([data-arrange]):not([data-empty]) {
+    height: 470px;
+    margin-inline: -16px;
+    border-radius: 0;
+  }
+  .stk-ctrl {
+    bottom: 20px;
   }
   .stk-keys:not([data-static]) {
     display: none;

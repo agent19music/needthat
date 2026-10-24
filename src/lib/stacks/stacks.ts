@@ -26,8 +26,10 @@ export const FAN_STAGGER_S = 0.035
 export const CARD = {
   pile: { width: 184, height: 244 },
   pileMobile: { width: 132, height: 184 },
-  stripFocus: { width: 340, height: 450 },
-  strip: { width: 280, height: 380 },
+  stripFocus: { width: 340, height: 450, top: 36 },
+  strip: { width: 280, height: 380, top: 70 },
+  stripFocusMobile: { width: 270, height: 370, top: 30 },
+  stripMobile: { width: 230, height: 320, top: 50 },
 } as const
 
 export type StripSlot = {
@@ -36,6 +38,8 @@ export type StripSlot = {
   scale: number
   width: number
   height: number
+  /** Distance from the top of the board (560 desktop, 470 mobile). */
+  top: number
   visible: boolean
   zIndex: number
 }
@@ -52,7 +56,7 @@ export function stripSlot(offset: number, mobile: boolean): StripSlot {
       x: 0,
       rotate: 0,
       scale: 1,
-      ...CARD.stripFocus,
+      ...(mobile ? CARD.stripFocusMobile : CARD.stripFocus),
       visible: true,
       zIndex: 10,
     }
@@ -61,7 +65,7 @@ export function stripSlot(offset: number, mobile: boolean): StripSlot {
       x: side * (mobile ? 262 : 320),
       rotate: side * 2,
       scale: 1,
-      ...CARD.strip,
+      ...(mobile ? CARD.stripMobile : CARD.strip),
       visible: true,
       zIndex: 9,
     }
@@ -69,7 +73,7 @@ export function stripSlot(offset: number, mobile: boolean): StripSlot {
     x: side * 560,
     rotate: side * 4,
     scale: 0.86,
-    ...CARD.strip,
+    ...(mobile ? CARD.stripMobile : CARD.strip),
     // Mobile only peeks the direct neighbours.
     visible: distance === 2 && !mobile,
     zIndex: 8 - Math.min(distance, 8),

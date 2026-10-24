@@ -86,7 +86,7 @@ export const StripCard = forwardRef<
         width: slot.width,
         height: slot.height,
         marginLeft: -slot.width / 2,
-        top: focused ? 36 : 70,
+        top: slot.top,
         pointerEvents: slot.visible ? undefined : 'none',
       }}
       aria-hidden={!slot.visible || undefined}

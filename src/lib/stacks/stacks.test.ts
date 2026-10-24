@@ -20,6 +20,33 @@ import {
 } from './stacks'
 
 describe('stripSlot geometry (handoff values)', () => {
+  it('fits the focused card and the controls inside the board', () => {
+    // Desktop board 560: card 36 + 450 = 486, controls sit below at bottom 22.
+    expect(stripSlot(0, false)).toMatchObject({
+      width: 340,
+      height: 450,
+      top: 36,
+    })
+    expect(stripSlot(1, false)).toMatchObject({
+      width: 280,
+      height: 380,
+      top: 70,
+    })
+    // Mobile board 470: card 30 + 370 = 400, controls at bottom 20.
+    expect(stripSlot(0, true)).toMatchObject({
+      width: 270,
+      height: 370,
+      top: 30,
+    })
+    expect(stripSlot(1, true)).toMatchObject({
+      width: 230,
+      height: 320,
+      top: 50,
+    })
+    const focus = stripSlot(0, true)
+    expect(focus.top + focus.height).toBeLessThanOrEqual(470 - 20 - 34)
+  })
+
   it('focus card is 340×450, flat, on top', () => {
     expect(stripSlot(0, false)).toMatchObject({
       x: 0,
