@@ -1,8 +1,8 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import * as Sentry from '@sentry/tanstackstart-react'
 
 import { getDb } from '#/db/index'
-import { categories, listItems, lists } from '#/db/schema'
+import { categories, listItems, lists, offers } from '#/db/schema'
 import {
   decodeImageBase64,
   isSafeImageUrl,
@@ -12,10 +12,17 @@ import { readSession } from '#/lib/session.server'
 import type { GuestCategory } from '#/lib/guest-wishlist'
 
 import type {
+  Price,
   SavedCategoryInput,
   SavedItemInput,
   StoredWishlistItem,
 } from './types.ts'
+import {
+  latestPrices,
+  nextPurchasedAt,
+  reassignPositions,
+  topPosition,
+} from './order.ts'
 
 const ITEM_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 const KEY = /^[A-Za-z0-9-]{1,80}$/
@@ -37,16 +44,23 @@ export async function readAccountWishlist() {
         .select()
         .from(listItems)
         .where(eq(listItems.listId, list.id))
-        .orderBy(desc(listItems.createdAt)),
+        .orderBy(
+          sql`${listItems.position} is null`,
+          asc(listItems.position),
+          desc(listItems.createdAt),
+        ),
       db
         .select()
         .from(categories)
         .where(eq(categories.listId, list.id))
         .orderBy(categories.createdAt),
     ])
+    const prices = await readPrices(itemRows.map((row) => row.id))
     return {
       ok: true as const,
-      items: itemRows.map(toGuestItem),
+      items: itemRows.map((row) =>
+        toGuestItem(row, prices.get(row.id) ?? null),
+      ),
       categories: categoryRows.map(toGuestCategory),
     }
   })
@@ -88,6 +102,24 @@ export async function writeAccountItem(input: SavedItemInput) {
     const imageUrl = await storedImageUrl(input)
     const now = new Date()
     const createdAt = existing?.createdAt ?? new Date(input.createdAt)
+    const purchasedAtMs = nextPurchasedAt(
+      existing
+        ? {
+            status: existing.status,
+            purchasedAt: existing.purchasedAt?.getTime() ?? null,
+          }
+        : null,
+      input.status,
+      now.getTime(),
+    )
+    const purchasedAt = purchasedAtMs === null ? null : new Date(purchasedAtMs)
+    // New items, and items moved to another stack, land on top of the pile.
+    const position =
+      existing &&
+      existing.categoryId === categoryId &&
+      existing.position !== null
+        ? existing.position
+        : await nextTopPosition(list.id)
     await db
       .insert(listItems)
       .values({
@@ -101,6 +133,8 @@ export async function writeAccountItem(input: SavedItemInput) {
         imageUrl,
         status: input.status,
         sourceUrl: input.sourceUrl || null,
+        position,
+        purchasedAt,
         createdAt,
         updatedAt: now,
       })
@@ -114,6 +148,8 @@ export async function writeAccountItem(input: SavedItemInput) {
           imageUrl,
           status: input.status,
           sourceUrl: input.sourceUrl || null,
+          position,
+          purchasedAt,
           updatedAt: now,
         },
       })
@@ -147,7 +183,10 @@ export async function writeAccountCategory(input: SavedCategoryInput) {
       return { ok: false as const, message: 'Sign in to save this category.' }
     }
     if (!KEY.test(input.id)) {
-      return { ok: false as const, message: 'That category could not be saved.' }
+      return {
+        ok: false as const,
+        message: 'That category could not be saved.',
+      }
     }
     const list = await ensureList(session.user.id)
     const existing = await getDb()
@@ -156,7 +195,10 @@ export async function writeAccountCategory(input: SavedCategoryInput) {
       .where(eq(categories.id, input.id))
       .get()
     if (existing && existing.listId !== list.id) {
-      return { ok: false as const, message: 'That category could not be saved.' }
+      return {
+        ok: false as const,
+        message: 'That category could not be saved.',
+      }
     }
     await getDb()
       .insert(categories)
@@ -172,6 +214,86 @@ export async function writeAccountCategory(input: SavedCategoryInput) {
       })
     return { ok: true as const }
   })
+}
+
+/**
+ * Saves a new manual order for one stack. `ids` must be the stack's items in
+ * the order the owner wants; every id must belong to the caller's list.
+ * Items outside the stack keep their relative order.
+ */
+export async function reorderAccountItems(ids: Array<string>) {
+  return Sentry.startSpan({ name: 'Reordering wishlist items' }, async () => {
+    const session = await readSession()
+    if (!session) {
+      return { ok: false as const, message: 'Sign in to arrange this stack.' }
+    }
+    if (ids.length === 0 || ids.some((id) => !KEY.test(id))) {
+      return { ok: false as const, message: 'That order could not be saved.' }
+    }
+    const list = await findList(session.user.id)
+    if (!list) {
+      return { ok: false as const, message: 'That order could not be saved.' }
+    }
+    const db = getDb()
+    const rows = await db
+      .select({
+        id: listItems.id,
+        position: listItems.position,
+        createdAt: listItems.createdAt,
+      })
+      .from(listItems)
+      .where(eq(listItems.listId, list.id))
+    let changes: Array<{ id: string; position: number }>
+    try {
+      changes = reassignPositions(
+        rows.map((row) => ({
+          id: row.id,
+          position: row.position,
+          createdAt: row.createdAt.getTime(),
+        })),
+        ids,
+      )
+    } catch {
+      return { ok: false as const, message: 'That order could not be saved.' }
+    }
+    for (const change of changes) {
+      await db
+        .update(listItems)
+        .set({ position: change.position })
+        .where(and(eq(listItems.id, change.id), eq(listItems.listId, list.id)))
+    }
+    return { ok: true as const, changed: changes.length }
+  })
+}
+
+async function nextTopPosition(listId: string) {
+  const rows = await getDb()
+    .select({ position: listItems.position })
+    .from(listItems)
+    .where(eq(listItems.listId, listId))
+  return topPosition(rows.map((row) => row.position))
+}
+
+async function readPrices(itemIds: Array<string>) {
+  if (itemIds.length === 0) return new Map<string, Price>()
+  const prices = new Map<string, Price>()
+  // D1 caps bound parameters per statement, so read in chunks.
+  for (let start = 0; start < itemIds.length; start += 90) {
+    const rows = await getDb()
+      .select({
+        itemId: offers.itemId,
+        priceAmount: offers.priceAmount,
+        currency: offers.currency,
+        observedAt: offers.observedAt,
+      })
+      .from(offers)
+      .where(inArray(offers.itemId, itemIds.slice(start, start + 90)))
+    for (const [id, price] of latestPrices(
+      rows.map((row) => ({ ...row, observedAt: row.observedAt.getTime() })),
+    ))
+      prices.set(id, price)
+  }
+  return prices
 }
 
 async function findList(userId: string) {
@@ -213,7 +335,10 @@ function cleanImageUrl(value: string | null) {
   return isSafeImageUrl(value) ? value : null
 }
 
-function toGuestItem(row: typeof listItems.$inferSelect): StoredWishlistItem {
+function toGuestItem(
+  row: typeof listItems.$inferSelect,
+  price: Price | null,
+): StoredWishlistItem {
   return {
     id: row.id,
     title: row.title,
@@ -223,14 +348,17 @@ function toGuestItem(row: typeof listItems.$inferSelect): StoredWishlistItem {
     categoryId: row.categoryId,
     status: row.status === 'purchased' ? 'purchased' : 'unresolved',
     imageUrl: row.imageUrl,
+    position: row.position,
+    purchasedAt:
+      row.purchasedAt?.getTime() ??
+      (row.status === 'purchased' ? row.updatedAt.getTime() : null),
+    price,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   }
 }
 
-function toGuestCategory(
-  row: typeof categories.$inferSelect,
-): GuestCategory {
+function toGuestCategory(row: typeof categories.$inferSelect): GuestCategory {
   return {
     id: row.id,
     name: row.name,

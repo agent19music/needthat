@@ -7,9 +7,11 @@ import {
 } from '#/lib/guest-wishlist'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 import type { StoredWishlistItem } from '#/lib/wishlist/types'
+import { reassignPositions } from '#/lib/wishlist/order'
 import {
   deleteAccountItem,
   loadAccountWishlist,
+  reorderAccountItemsFn,
   saveAccountCategory,
   saveAccountItem,
 } from '#/lib/wishlist/account'
@@ -49,6 +51,37 @@ export async function deleteActiveItem(signedIn: boolean, id: string) {
   }
   const result = await deleteAccountItem({ data: { id } })
   if (!result.ok) throw new Error(result.message)
+}
+
+/**
+ * Saves a new top-first order for one stack and returns the whole list with
+ * positions applied. Other stacks keep their relative order. The signed-in
+ * path lets the server recompute the same positions from its own rows.
+ */
+export async function reorderActiveItems(
+  signedIn: boolean,
+  all: Array<GuestItem>,
+  stackIds: Array<string>,
+) {
+  const changes = reassignPositions(
+    all.map((item) => ({
+      id: item.id,
+      position: item.position ?? null,
+      createdAt: item.createdAt,
+    })),
+    stackIds,
+  )
+  const byId = new Map(changes.map((change) => [change.id, change.position]))
+  const next = all.map((item) =>
+    byId.has(item.id) ? { ...item, position: byId.get(item.id) } : item,
+  )
+  if (!signedIn) {
+    for (const item of next) if (byId.has(item.id)) await saveGuestItem(item)
+    return next
+  }
+  const result = await reorderAccountItemsFn({ data: { ids: stackIds } })
+  if (!result.ok) throw new Error(result.message)
+  return next
 }
 
 export async function saveActiveCategory(
@@ -107,7 +140,9 @@ async function itemPayload(item: GuestItem) {
     categoryId: item.categoryId,
     status: item.status,
     imageUrl:
-      item.imageUrl && !item.imageUrl.startsWith('blob:') ? item.imageUrl : null,
+      item.imageUrl && !item.imageUrl.startsWith('blob:')
+        ? item.imageUrl
+        : null,
     imageBase64: upload ? await blobToBase64(item.image as Blob) : undefined,
     imageType: upload ? (item.imageType ?? item.image?.type) : undefined,
     createdAt: item.createdAt,
