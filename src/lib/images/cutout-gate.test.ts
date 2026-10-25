@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { GATE, bakeDie, cutSticker, dieRadius, gateCutout } from './cutout-gate'
+import {
+  GATE,
+  bakeDie,
+  cutSticker,
+  dieRadius,
+  gateCutout,
+  hasTransparentBorder,
+} from './cutout-gate'
 import { liftStudioBackdrop, liftStudioBackdropFrame } from './studio-backdrop'
 
 type Paint = (x: number, y: number) => [number, number, number] | null
@@ -21,7 +28,11 @@ function frame(width: number, height: number, paint: Paint) {
 }
 
 /** Alpha-only mask for gate tests: 1 = product. */
-function mask(width: number, height: number, inside: (x: number, y: number) => boolean) {
+function mask(
+  width: number,
+  height: number,
+  inside: (x: number, y: number) => boolean,
+) {
   const data = new Uint8ClampedArray(width * height * 4)
   for (let y = 0; y < height; y += 1)
     for (let x = 0; x < width; x += 1)
@@ -54,7 +65,11 @@ describe('gateCutout', () => {
 
   it('rejects a product cropped through two or more edges', () => {
     const result = gateCutout(mask(100, 100, rect(0, 30, 100, 70)), 100, 100)
-    expect(result).toMatchObject({ ok: false, reason: 'edges', touchedEdges: 2 })
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'edges',
+      touchedEdges: 2,
+    })
   })
 
   it('ignores a stray pixel or two on an edge (< 2% of its length)', () => {
@@ -82,14 +97,26 @@ describe('gateCutout', () => {
   })
 
   it('rejects too little and too much coverage', () => {
-    expect(gateCutout(mask(100, 100, disc(50, 50, 4)), 100, 100)).toMatchObject({
-      ok: false,
-      reason: 'coverage',
-    })
+    expect(gateCutout(mask(100, 100, disc(50, 50, 4)), 100, 100)).toMatchObject(
+      {
+        ok: false,
+        reason: 'coverage',
+      },
+    )
     expect(
-      gateCutout(mask(100, 100, (x, y) => !(x < 2 && y < 2)), 100, 100),
+      gateCutout(
+        mask(100, 100, (x, y) => !(x < 2 && y < 2)),
+        100,
+        100,
+      ),
     ).toMatchObject({ ok: false, reason: 'coverage' })
-    expect(gateCutout(mask(10, 10, () => false), 10, 10)).toMatchObject({
+    expect(
+      gateCutout(
+        mask(10, 10, () => false),
+        10,
+        10,
+      ),
+    ).toMatchObject({
       ok: false,
       reason: 'coverage',
       mainBlob: 0,
@@ -147,11 +174,27 @@ describe('bakeDie', () => {
     const row = Array.from({ length: die.width }, (_, x) => at(x, 28)[3])
     expect(row.some((alpha) => alpha > 0 && alpha < 255)).toBe(true)
   })
+  it('grows the border from the 50% mask, not faint fringe pixels', () => {
+    const soft = mask(size, size, disc(20, 20, 10))
+    // A faint shadow streak far from the product, like a lifted floor shadow.
+    for (let x = 2; x < 38; x += 1) soft[(36 * size + x) * 4 + 3] = 60
+    const baked = bakeDie(soft, size, size, 6)
+    const alpha = (x: number, y: number) =>
+      baked.data[(y * baked.width + x) * 4 + 3]
+    // (4, 32) is 4px from the streak but 20px from the disc: no border there.
+    expect(alpha(8 + 4, 8 + 32)).toBe(0)
+    // The faint streak itself is dropped rather than printed.
+    expect(alpha(8 + 4, 8 + 36)).toBe(0)
+    // The disc still gets its border.
+    expect(alpha(8 + 33, 8 + 20)).toBe(255)
+  })
 })
 
 describe('liftStudioBackdropFrame', () => {
   it('returns the full frame and matches the cropped lift', () => {
-    const data = frame(60, 60, (x, y) => (disc(30, 30, 18)(x, y) ? green : null))
+    const data = frame(60, 60, (x, y) =>
+      disc(30, 30, 18)(x, y) ? green : null,
+    )
     const lifted = liftStudioBackdropFrame(data, 60, 60)
     expect(lifted).toMatchObject({ width: 60, height: 60 })
     expect(lifted?.data[3]).toBe(0)
@@ -163,7 +206,9 @@ describe('liftStudioBackdropFrame', () => {
 
 describe('cutSticker', () => {
   it('prints a die sticker from a clean studio shot', () => {
-    const data = frame(120, 100, (x, y) => (disc(60, 50, 28)(x, y) ? green : null))
+    const data = frame(120, 100, (x, y) =>
+      disc(60, 50, 28)(x, y) ? green : null,
+    )
     const result = cutSticker(data, 120, 100)
     expect(result.kind).toBe('die')
     if (result.kind !== 'die') return
@@ -172,21 +217,60 @@ describe('cutSticker', () => {
   })
 
   it('falls back to a photo sticker when there is no flat backdrop', () => {
-    const noisy = frame(80, 80, (x, y) => [(x * 37) % 255, (y * 91) % 255, (x * y) % 255])
-    expect(cutSticker(noisy, 80, 80)).toEqual({ kind: 'photo', reason: 'no-backdrop' })
+    const noisy = frame(80, 80, (x, y) => [
+      (x * 37) % 255,
+      (y * 91) % 255,
+      (x * y) % 255,
+    ])
+    expect(cutSticker(noisy, 80, 80)).toEqual({
+      kind: 'photo',
+      reason: 'no-backdrop',
+    })
+  })
+
+  it('uses the alpha of a shop PNG that is already cut out', () => {
+    // A dark product on a fully transparent canvas: no light backdrop to flood.
+    const data = mask(120, 100, disc(60, 50, 28))
+    expect(hasTransparentBorder(data, 120, 100)).toBe(true)
+    expect(cutSticker(data, 120, 100).kind).toBe('die')
+  })
+
+  it('still gates an already-cut PNG', () => {
+    const data = mask(
+      120,
+      80,
+      (x, y) => disc(30, 40, 20)(x, y) || disc(90, 40, 20)(x, y),
+    )
+    expect(cutSticker(data, 120, 80)).toEqual({
+      kind: 'photo',
+      reason: 'fragmented',
+    })
+  })
+
+  it('does not treat an opaque backdrop as transparent', () => {
+    const data = frame(60, 60, (x, y) =>
+      disc(30, 30, 18)(x, y) ? green : null,
+    )
+    expect(hasTransparentBorder(data, 60, 60)).toBe(false)
   })
 
   it('falls back when the product runs off two edges', () => {
     const data = frame(100, 100, (x, y) =>
       rect(0, 30, 100, 80)(x, y) ? green : null,
     )
-    expect(cutSticker(data, 100, 100)).toEqual({ kind: 'photo', reason: 'edges' })
+    expect(cutSticker(data, 100, 100)).toEqual({
+      kind: 'photo',
+      reason: 'edges',
+    })
   })
 
   it('falls back on fragmented cut-outs', () => {
     const data = frame(120, 80, (x, y) =>
       disc(30, 40, 20)(x, y) || disc(90, 40, 20)(x, y) ? green : null,
     )
-    expect(cutSticker(data, 120, 80)).toEqual({ kind: 'photo', reason: 'fragmented' })
+    expect(cutSticker(data, 120, 80)).toEqual({
+      kind: 'photo',
+      reason: 'fragmented',
+    })
   })
 })

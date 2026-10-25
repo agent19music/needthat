@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
+import { CaretLeftIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
 import { EASE, GESTURE, MOTION } from '#/components/sticker/motion'
@@ -7,6 +7,7 @@ import { Sheet } from '#/components/sticker/sheet'
 import {
   clampPage,
   formatTotal,
+  gotCountLabel,
   orderGot,
   paginateGot,
   sheetMeta,
@@ -14,9 +15,10 @@ import {
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 
 /**
- * S5 Got page: the yellow sheet as a book, newest first (Bau Q13). Pages
- * turn with the pager or a sideways swipe; a freshly stuck sticker opens
- * on its page (the board passes `page`).
+ * Got page (r2 B1·09 / #25 / #26): full screen with an X top-left and the
+ * "Got" title, the yellow sheet on the Got zig-zag below. 390 uses Z1
+ * (head_bottom 156, low GOT pills, date captions); 1440 uses the wall.
+ * The count line holds its old value until the sticker lands (+120ms, #22).
  */
 export function GotPage({
   items,
@@ -30,6 +32,8 @@ export function GotPage({
   landingId,
   landedId,
   onOpen,
+  onClose,
+  wide = false,
   top,
 }: {
   items: ReadonlyArray<GuestItem>
@@ -39,11 +43,13 @@ export function GotPage({
   perPage: number
   page: number
   onPage: (page: number) => void
-  /** Count before the last peel, for the "3 → 4 got" pill. */
+  /** Count before the last peel; shown until the sticker lands. */
   previousCount: number | null
   landingId: string | null
   landedId: string | null
   onOpen: (item: GuestItem, opener: HTMLElement) => void
+  onClose?: () => void
+  wide?: boolean
   top?: ReactNode
 }) {
   const reduced = useReducedMotion() ?? false
@@ -51,9 +57,11 @@ export function GotPage({
   const pages = paginateGot(got, perPage)
   const current = clampPage(page, pages.length)
   const shown = pages[current]?.items ?? []
-  const newest = got[0]?.id ?? null
-  const total = showPrice ? formatTotal(got) : null
-  const count = got.length
+  // #22: the count and year pill change only after the landing.
+  // In flight, then +120ms after the landing (previousCount clears then).
+  const pending = landingId ?? (previousCount !== null ? landedId : null)
+  const counted = pending ? got.filter((item) => item.id !== pending) : got
+  const total = showPrice ? formatTotal(counted) : null
 
   function turn(next: number) {
     const target = clampPage(next, pages.length)
@@ -61,8 +69,22 @@ export function GotPage({
   }
 
   return (
-    <div className="nt-gotpage">
+    <div className="nt-gotpage" data-wide={wide ? 'true' : undefined}>
       {top}
+      {onClose ? (
+        <div className="nt-got-bar">
+          <button
+            type="button"
+            className="nt-ib"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <XIcon weight="bold" aria-hidden="true" />
+          </button>
+          <h2>Got</h2>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
           key={current}
@@ -98,31 +120,20 @@ export function GotPage({
             fill="yellow"
             kicker="GOT PAGE"
             title="Got"
-            meta={sheetMeta(count, total)}
-            variant="page"
+            meta={sheetMeta(counted.length, total, { compact: true })}
+            metaPill={counted.length > 0 ? gotCountLabel(counted, now) : null}
+            variant={wide ? 'wall' : 'got-column'}
             stickers={shown}
             mode="got"
             now={now}
             showPrice={showPrice}
             categories={categories}
             allItems={items}
-            newestGotId={newest}
+            fab={false}
             landingId={landingId}
             landedId={landedId}
             onOpen={onOpen}
-          >
-            {count > 0 ? (
-              <span className="nt-cnt" data-place="sheet">
-                {previousCount !== null && previousCount !== count ? (
-                  <>
-                    <s>{previousCount}</s> → {count} got
-                  </>
-                ) : (
-                  `${count} got`
-                )}
-              </span>
-            ) : null}
-          </Sheet>
+          />
         </motion.div>
       </AnimatePresence>
       {pages.length > 1 ? (

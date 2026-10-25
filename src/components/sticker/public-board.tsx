@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
-  CaretLeftIcon,
+  CheckCircleIcon,
   EyeSlashIcon,
   GiftIcon,
   HandGrabbingIcon,
+  ListIcon,
+  PlusIcon,
+  SquaresFourIcon,
+  StackIcon,
 } from '@phosphor-icons/react'
 
-import { Avatar } from '#/components/sticker/board'
+import { Avatar, deskRows, useBand, useWide } from '#/components/sticker/board'
+import type { DeskCell } from '#/components/sticker/board'
 import { Overlay, Toast } from '#/components/sticker/overlays'
 import type { ToastState } from '#/components/sticker/overlays'
 import { Sheet } from '#/components/sticker/sheet'
@@ -16,10 +21,12 @@ import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 import {
   buildSheets,
   formatPrice,
+  gotCountLabel,
   sheetKicker,
   sheetMeta,
 } from '#/lib/sticker/sheets'
 import type { TagSheet } from '#/lib/sticker/sheets'
+import type { LayoutKind } from '#/lib/sticker/layout'
 import { claimItem, releaseClaim } from '#/lib/wishlist/public'
 import type { PublicSticker, PublicWishlist } from '#/lib/wishlist/types'
 
@@ -46,6 +53,10 @@ export function publicItems(stickers: ReadonlyArray<PublicSticker>) {
 
 type Claim = { claimed: boolean; mine: boolean }
 
+/** ?sheet= values for the Got and #unsorted tabs (not category ids). */
+const GOT_KEY = 'got'
+const UNSORTED_KEY = 'unsorted'
+
 /** S7: a friend's read-only sheet with the claim bottom sheet. */
 export function PublicBoard({
   profile,
@@ -57,6 +68,8 @@ export function PublicBoard({
   signedIn: boolean
 }) {
   const navigate = useNavigate()
+  const wide = useWide()
+  const band = useBand()
   const now = useMemo(() => Date.now(), [])
   const items = useMemo(() => publicItems(profile.items), [profile.items])
   const categories = profile.categories as Array<GuestCategory>
@@ -93,8 +106,9 @@ export function PublicBoard({
   }, [toast])
 
   const selected =
-    sets.filled.find((sheet) => sheet.categoryId === sheetId) ?? null
-  const shown = selected ? [selected] : sets.filled
+    sets.filled.find((sheet) =>
+      sheetId === UNSORTED_KEY ? sheet.unsorted : sheet.categoryId === sheetId,
+    ) ?? null
   const first = profile.name.trim().split(/\s+/)[0] || profile.username
   const user = {
     name: profile.name,
@@ -173,105 +187,141 @@ export function PublicBoard({
   const openClaim = open ? claimOf(open) : null
   const openSheet = open ? sheetOf(sets.filled, open) : null
 
-  return (
-    <div className="nt-root nt-mobile nt-public">
-      <KissCutFilters />
-      <div className="nt-tb">
-        <Link to="/" className="nt-ib" aria-label="#needthat home">
-          <CaretLeftIcon aria-hidden="true" />
-        </Link>
-        <div className="nt-claim-head">
-          <Avatar
-            user={user}
-            style={{ width: 36, height: 36, fontSize: 12, borderWidth: 3 }}
+  const onOpen = profile.allowClaims
+    ? (item: GuestItem) => {
+        if (item.status === 'purchased') return
+        const state = claimOf(item)
+        if (state.claimed && !state.mine) return
+        setError(null)
+        setOpen(item)
+      }
+    : undefined
+  const common = {
+    now,
+    showPrice: profile.showPrices,
+    claimOf,
+    categories,
+    allItems: items,
+    onOpen,
+  }
+  const wantCount = items.filter((item) => item.status !== 'purchased').length
+  const gotCount = sets.got.count
+  const gotShown = sheetId === GOT_KEY && gotCount > 0
+  const gotSheet = (variant: LayoutKind) => (
+    <Sheet
+      {...common}
+      fill="yellow"
+      kicker="GOT PAGE"
+      title="Got"
+      meta={sheetMeta(gotCount, null)}
+      metaPill={gotCountLabel(sets.got.items, now)}
+      variant={variant}
+      stickers={sets.got.items}
+      mode="got"
+      onMore={() => choose(GOT_KEY)}
+      active
+    />
+  )
+  const sheetEl = (sheet: TagSheet, variant: LayoutKind, active = false) => (
+    <Sheet
+      key={sheet.key}
+      {...common}
+      fill={sheet.unsorted ? 'paper' : sheet.color}
+      kicker={sheetKicker(sheet.number)}
+      title={sheet.tag}
+      // B4·01: public sheet meta is the count only.
+      meta={sheetMeta(sheet.wanted.length, null)}
+      variant={variant}
+      stickers={sheet.stickers}
+      mode="public"
+      active={active}
+      onMore={() => choose(sheet.categoryId ?? UNSORTED_KEY)}
+    />
+  )
+
+  const tabs = (
+    <>
+      <button
+        type="button"
+        role="tab"
+        className="nt-tab"
+        data-fill="all"
+        aria-selected={selected === null && !gotShown}
+        onClick={() => choose(null)}
+      >
+        #all <b>{wantCount}</b>
+      </button>
+      {sets.filled.map((sheet) => (
+        <button
+          key={sheet.key}
+          type="button"
+          role="tab"
+          className="nt-tab"
+          data-fill={sheet.unsorted ? 'paper' : sheet.color}
+          aria-selected={selected?.key === sheet.key}
+          onClick={() => choose(sheet.categoryId ?? UNSORTED_KEY)}
+        >
+          {sheet.tag} <b>{sheet.wanted.length}</b>
+        </button>
+      ))}
+      {gotCount > 0 ? (
+        <button
+          type="button"
+          role="tab"
+          className="nt-tab"
+          data-fill="yellow"
+          aria-selected={gotShown}
+          onClick={() => choose(GOT_KEY)}
+        >
+          <CheckCircleIcon
+            weight="fill"
+            aria-hidden="true"
+            className="nt-tab-check"
           />
-          <div>
-            <h1 style={{ font: 'inherit', margin: 0 }}>
-              {first}&apos;s wishlist
-            </h1>
-            <small>
-              @{profile.username}
-              {selected ? ` · ${selected.tag}` : ''}
-            </small>
-          </div>
-        </div>
-        {profile.allowClaims ? (
-          <button
-            type="button"
-            className="nt-ib"
-            aria-label="How claiming works"
-            onClick={() => setHowOpen(true)}
-          >
-            <GiftIcon aria-hidden="true" />
-          </button>
-        ) : (
-          <span style={{ width: 44 }} aria-hidden="true" />
-        )}
-      </div>
-
-      {sets.filled.length > 1 ? (
-        <div className="nt-mtabs" role="tablist" aria-label="Sheets">
-          <button
-            type="button"
-            role="tab"
-            className="nt-tab"
-            data-fill="all"
-            aria-selected={selected === null}
-            onClick={() => choose(null)}
-          >
-            #all{' '}
-            <b>{items.filter((item) => item.status !== 'purchased').length}</b>
-          </button>
-          {sets.filled.map((sheet) => (
-            <button
-              key={sheet.key}
-              type="button"
-              role="tab"
-              className="nt-tab"
-              data-fill={sheet.color}
-              aria-selected={selected?.key === sheet.key}
-              onClick={() => choose(sheet.categoryId)}
-            >
-              {sheet.tag} <b>{sheet.wanted.length}</b>
-            </button>
-          ))}
-        </div>
+          Got <b>{gotCount}</b>
+        </button>
       ) : null}
+    </>
+  )
 
-      <div className="nt-msheets">
-        {shown.length === 0 ? (
-          <p className="nt-public-empty">Nothing shared yet</p>
-        ) : (
-          shown.map((sheet, index) => (
-            <Sheet
-              key={sheet.key}
-              fill={sheet.color}
-              kicker={sheetKicker(sheet.number)}
-              title={sheet.tag}
-              meta={sheetMeta(sheet.wanted.length, null)}
-              variant="column"
-              stickers={sheet.stickers}
-              mode="public"
-              now={now}
-              showPrice={profile.showPrices}
-              claimOf={claimOf}
-              active={index === 0}
-              onOpen={
-                profile.allowClaims
-                  ? (item) => {
-                      if (item.status === 'purchased') return
-                      const state = claimOf(item)
-                      if (state.claimed && !state.mine) return
-                      setError(null)
-                      setOpen(item)
-                    }
-                  : undefined
-              }
-            />
-          ))
-        )}
-      </div>
+  // B4·01 / B4·02 draw the layout switch; public has only the Stacks view
+  // today, so Grid and List stay disabled (see PR gaps).
+  const seg = (
+    <div className="nt-seg" role="group" aria-label="Layout">
+      <button type="button" aria-label="Grid" aria-pressed={false} disabled>
+        <SquaresFourIcon aria-hidden="true" />
+      </button>
+      <button type="button" aria-label="Stacks" aria-pressed>
+        <StackIcon weight="fill" aria-hidden="true" />
+      </button>
+      <button type="button" aria-label="List" aria-pressed={false} disabled>
+        <ListIcon aria-hidden="true" />
+      </button>
+    </div>
+  )
 
+  // C85 has no copy yet: the existing "Create account" string stands in.
+  const makeOwn = (
+    <Link to="/sign-up" className="nt-pill" data-tone="yellow">
+      <PlusIcon weight="bold" aria-hidden="true" />
+      Create account
+    </Link>
+  )
+
+  const howButton = profile.allowClaims ? (
+    <button
+      type="button"
+      className="nt-pill nt-how"
+      data-tone="white"
+      onClick={() => setHowOpen(true)}
+    >
+      <GiftIcon aria-hidden="true" />
+      How claiming works
+    </button>
+  ) : null
+
+  const overlays = (
+    <>
       <Overlay
         open={open !== null}
         onClose={() => setOpen(null)}
@@ -356,6 +406,149 @@ export function PublicBoard({
       </Overlay>
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
+    </>
+  )
+
+  if (!wide) {
+    const shown = gotShown ? [] : selected ? [selected] : sets.filled
+    return (
+      <div className="nt-root nt-mobile nt-public">
+        <KissCutFilters />
+        <header className="nt-mt">
+          <Link to="/" className="nt-word">
+            #needthat
+          </Link>
+          <div className="nt-mt-right">{signedIn ? null : makeOwn}</div>
+        </header>
+        <div className="nt-pr">
+          <div className="nt-pr-id">
+            <Avatar user={user} />
+            <div style={{ minWidth: 0 }}>
+              <h1 className="nt-pr-name">{profile.name || first}</h1>
+              <p>
+                @{profile.username} · {wantCount}{' '}
+                {wantCount === 1 ? 'want' : 'wants'}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="nt-mtools" data-public="true">
+          {howButton ?? <span />}
+          {seg}
+        </div>
+        {sets.filled.length + (gotCount > 0 ? 1 : 0) > 1 ? (
+          <div className="nt-mtabs" role="tablist" aria-label="Sheets">
+            {tabs}
+          </div>
+        ) : null}
+        <div className="nt-msheets">
+          {gotShown ? (
+            gotSheet('got-column')
+          ) : shown.length === 0 ? (
+            <p className="nt-public-empty">Nothing shared yet</p>
+          ) : (
+            shown.map((sheet, index) => sheetEl(sheet, 'column', index === 0))
+          )}
+        </div>
+        {overlays}
+      </div>
+    )
+  }
+
+  const rows: Array<Array<DeskCell>> = gotShown
+    ? []
+    : selected
+      ? [[{ sheet: selected, kind: 'wall' }]]
+      : deskRows(sets.filled, [], gotCount > 0, band)
+  return (
+    <div className="nt-root nt-public" data-layout="wide">
+      <KissCutFilters />
+      <header className="nt-top">
+        <Link to="/" className="nt-word">
+          #needthat
+        </Link>
+        <div className="nt-top-right">
+          {seg}
+          {signedIn ? null : (
+            <>
+              {makeOwn}
+              <Link
+                to="/sign-in"
+                search={{ redirect: returnTo }}
+                className="nt-pill"
+                data-tone="white"
+              >
+                Sign in
+              </Link>
+            </>
+          )}
+        </div>
+      </header>
+      <div className="nt-desk">
+        <aside className="nt-cover-col">
+          <div className="nt-cover">
+            <Avatar user={user} />
+            <h1>{profile.name || first}</h1>
+            <span className="nt-handle">@{profile.username}</span>
+            <div className="nt-cover-stats">
+              <span>
+                <b>{wantCount}</b>
+                <small>{wantCount === 1 ? 'want' : 'wants'}</small>
+              </span>
+              <span>
+                <b>{gotCount}</b>
+                <small>got</small>
+              </span>
+            </div>
+            {howButton ? <div className="nt-actions">{howButton}</div> : null}
+          </div>
+        </aside>
+        <main className="nt-board-col">
+          <div className="nt-tabrow">
+            <div className="nt-tabs" role="tablist" aria-label="Sheets">
+              {tabs}
+            </div>
+          </div>
+          <div className="nt-board">
+            {gotShown ? (
+              <div className="nt-board-grid">{gotSheet('wall')}</div>
+            ) : rows.length === 0 ? (
+              <p className="nt-public-empty">Nothing shared yet</p>
+            ) : (
+              <div className="nt-board-grid">
+                {rows.map((row, rowIndex) => (
+                  <div
+                    key={rowIndex}
+                    className="nt-row"
+                    data-row={row.map((cell) => cell.kind).join(' ')}
+                  >
+                    {row.map((cell) =>
+                      cell.sheet === 'got' ? (
+                        <div
+                          key="got"
+                          className="nt-cell"
+                          data-kind={cell.kind}
+                        >
+                          {gotSheet(cell.kind)}
+                        </div>
+                      ) : (
+                        <div
+                          key={cell.sheet.key}
+                          className="nt-cell"
+                          data-kind={cell.kind}
+                        >
+                          {sheetEl(cell.sheet, cell.kind, rowIndex === 0)}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+      {overlays}
     </div>
   )
 }

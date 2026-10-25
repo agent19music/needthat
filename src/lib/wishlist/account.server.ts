@@ -207,7 +207,7 @@ export async function writeAccountCategory(input: SavedCategoryInput) {
     // A new tag takes the next slot in the sheet cycle unless the client sent one.
     const color = isTagColor(input.color)
       ? input.color
-      : existing?.color ??
+      : (existing?.color ??
         cycleColor(
           (
             await getDb()
@@ -215,7 +215,7 @@ export async function writeAccountCategory(input: SavedCategoryInput) {
               .from(categories)
               .where(eq(categories.listId, list.id))
           ).length,
-        )
+        ))
     await getDb()
       .insert(categories)
       .values({
@@ -294,12 +294,14 @@ export async function readShareSettings() {
     ok: true as const,
     showPrices: list?.sharePrices ?? true,
     allowClaims: list?.shareClaims ?? true,
+    sharing: list?.shareOn ?? true,
   }
 }
 
 export async function writeShareSettings(input: {
   showPrices?: boolean
   allowClaims?: boolean
+  sharing?: boolean
 }) {
   return Sentry.startSpan({ name: 'Saving share settings' }, async () => {
     const session = await readSession()
@@ -308,9 +310,11 @@ export async function writeShareSettings(input: {
     }
     const list = await ensureList(session.user.id)
     const set: Partial<typeof lists.$inferInsert> = { updatedAt: new Date() }
-    if (typeof input.showPrices === 'boolean') set.sharePrices = input.showPrices
+    if (typeof input.showPrices === 'boolean')
+      set.sharePrices = input.showPrices
     if (typeof input.allowClaims === 'boolean')
       set.shareClaims = input.allowClaims
+    if (typeof input.sharing === 'boolean') set.shareOn = input.sharing
     await getDb().update(lists).set(set).where(eq(lists.id, list.id))
     const { warmShareCardForUser } = await import('#/lib/og/card.server')
     warmShareCardForUser(session.user.id)
@@ -318,6 +322,7 @@ export async function writeShareSettings(input: {
       ok: true as const,
       showPrices: set.sharePrices ?? list.sharePrices,
       allowClaims: set.shareClaims ?? list.shareClaims,
+      sharing: set.shareOn ?? list.shareOn,
     }
   })
 }

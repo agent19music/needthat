@@ -24,18 +24,16 @@ import {
 } from '#/components/sticker/motion'
 import {
   dotFill,
-  dotRotation,
   formatPrice,
-  gotLabel,
-  gotSubCaption,
+  gotDate,
   gotTime,
-  isNew,
-  layoutSheet,
   moreLabel,
-  seeded,
   stickerLabel,
 } from '#/lib/sticker/sheets'
-import type { LayoutVariant, SheetFill, Slot } from '#/lib/sticker/sheets'
+import type { SheetFill } from '#/lib/sticker/sheets'
+import { dotDiameter, planSheet, planGotWall } from '#/lib/sticker/layout'
+import type { LayoutKind, Placement, Plan } from '#/lib/sticker/layout'
+import { reportAspect, useAspects } from '#/lib/sticker/aspects'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 
 /** board: owner's sheets (got items are ghosts) · got: Got sheet/page · public: claim view. */
@@ -48,15 +46,22 @@ export type SheetProps = {
   kicker?: string | null
   title: string
   meta?: string | null
-  variant: LayoutVariant
+  /** Inline pill under the meta (Got: "1 this year", r2 #16/#23). */
+  metaPill?: string | null
+  variant: LayoutKind
   stickers: ReadonlyArray<GuestItem>
   mode: SheetMode
   now: number
   showPrice: boolean
+  /** Owner view: ids that wear the NEW star (newBadgeIds). */
+  newIds?: ReadonlySet<string>
+  /** 390 column: reserve room for the peel hint / FAB (r2 #11). */
+  hint?: boolean
+  fab?: boolean
   /** Needed for Got sub-captions. */
   categories?: ReadonlyArray<GuestCategory>
   allItems?: ReadonlyArray<GuestItem>
-  /** Newest got sticker: full colour and the progress sub-caption. */
+  /** Newest got sticker: full colour. */
   newestGotId?: string | null
   peelable?: boolean
   onOpen?: (item: GuestItem, opener: HTMLElement) => void
@@ -79,13 +84,36 @@ export type SheetProps = {
   sheetRef?: (element: HTMLElement | null) => void
 }
 
-const AUTO_HEIGHT: ReadonlyArray<LayoutVariant> = ['column', 'page', 'wall']
+/** r3: px the price dot box keeps clear of the sheet edge (its 8° turn adds ~3). */
+const DOT_INSET = 8
+
+/**
+ * r3: the dot's `left` inside its sticker, clamped so the dot box stays
+ * DOT_INSET px inside both sheet edges. `slotX` is the sticker's left and
+ * `size` the dot's rendered diameter; 100cqw is the sheet width.
+ */
+export function dotLeft(left: string, slotX: string, size: string) {
+  return `clamp(calc(${DOT_INSET}px - ${slotX}), ${left}, calc(100cqw - ${slotX} - ${size} - ${DOT_INSET}px))`
+}
+
+/** Design px → a length that scales with the sheet (cqw of .nt-sheet). */
+export function scaled(plan: { width: number }, value: number) {
+  return `calc(${(value / plan.width).toFixed(5)} * 100cqw)`
+}
 
 export function Sheet(props: SheetProps) {
-  const layout = layoutSheet(props.stickers, props.variant)
+  const aspectOf = useAspects(props.stickers)
+  const inputs = props.stickers.map((item) => ({
+    id: item.id,
+    aspect: aspectOf(item),
+    ghost: item.status === 'purchased',
+  }))
+  const plan =
+    props.variant === 'wall' && props.mode === 'got'
+      ? planGotWall(inputs)
+      : planSheet(props.variant, inputs, { hint: props.hint, fab: props.fab })
   const byId = new Map(props.stickers.map((item) => [item.id, item]))
-  const auto = AUTO_HEIGHT.includes(props.variant) && layout.height > 0
-  const more = moreLabel(layout.hidden)
+  const more = moreLabel(plan.hidden)
   return (
     <section
       ref={props.sheetRef}
@@ -96,10 +124,7 @@ export function Sheet(props: SheetProps) {
       data-highlight={props.highlight ? 'true' : undefined}
       data-active={props.active ? 'true' : undefined}
       aria-label={`${props.title}${props.meta ? `, ${props.meta}` : ''}`}
-      style={{
-        ...(auto ? { aspectRatio: `1 / ${layout.height}` } : null),
-        ...props.style,
-      }}
+      style={{ aspectRatio: `${plan.width} / ${plan.height}`, ...props.style }}
     >
       <header className="nt-sheet-head">
         {props.kicker ? (
@@ -107,54 +132,87 @@ export function Sheet(props: SheetProps) {
         ) : null}
         <h3>{props.title}</h3>
         {props.meta ? <p>{props.meta}</p> : null}
+        {props.metaPill ? (
+          <span className="nt-year">{props.metaPill}</span>
+        ) : null}
       </header>
-      {layout.slots.map((slot) => {
-        const item = byId.get(slot.id)
+      {plan.places.map((place, index) => {
+        const item = byId.get(place.id)
         if (!item) return null
         return (
           <StickerSlot
             key={props.landedId === item.id ? `${item.id}:landed` : item.id}
             item={item}
-            slot={slot}
-            dot={layout.dot}
+            place={place}
+            plan={plan}
+            z={index + 1}
             sheet={props}
           />
         )
       })}
-      {more && props.onMore ? (
-        <button
-          type="button"
-          className="nt-more"
-          onClick={props.onMore}
-          aria-label={`${layout.hidden} more on ${props.title}`}
-          style={moreStyle(props.variant, layout.dot)}
-        >
-          <span style={{ textAlign: 'center', lineHeight: 1 }}>
-            <span style={{ display: 'block', fontSize: '1.3em' }}>{more}</span>
-            <span style={{ fontSize: '.8em', fontWeight: 600 }}>more</span>
-          </span>
-        </button>
+      {more && plan.more ? (
+        <MoreSticker
+          plan={plan}
+          label={more}
+          title={props.title}
+          hidden={plan.hidden}
+          onMore={props.onMore}
+        />
       ) : null}
       {props.children}
     </section>
   )
 }
 
-function moreStyle(variant: LayoutVariant, dot: number): CSSProperties {
-  // 1440 frames: the white "+N more" dot sits at the right edge, mid-height.
-  const place =
-    variant === 'got'
-      ? { left: '86.8cqw', top: '35.4cqw', rotate: -4 }
-      : variant === 'half'
-        ? { left: '80cqw', top: '96cqw', rotate: 6 }
-        : { left: '91.3cqw', top: '14.8cqw', rotate: 6 }
-  const size = Math.max(dot, 0.064)
-  return {
-    '--d': size,
-    left: place.left,
-    top: place.top,
-    transform: `rotate(${place.rotate}deg)`,
-  } as CSSProperties
+function MoreSticker({
+  plan,
+  label,
+  title,
+  hidden,
+  onMore,
+}: {
+  plan: Plan
+  label: string
+  title: string
+  hidden: number
+  onMore?: () => void
+}) {
+  const spot = plan.more
+  if (!spot) return null
+  const u = (value: number) => scaled(plan, value)
+  const style: CSSProperties = {
+    left: u(spot.x),
+    top: u(spot.y),
+    width: u(spot.size),
+    height: u(spot.size),
+  }
+  const body = (
+    <>
+      <b style={{ fontSize: u(18) }}>{label}</b>
+      <span style={{ fontSize: u(10) }}>more</span>
+    </>
+  )
+  if (!onMore)
+    return (
+      <span
+        className="nt-more"
+        style={style}
+        aria-label={`${hidden} more on ${title}`}
+      >
+        {body}
+      </span>
+    )
+  return (
+    <button
+      type="button"
+      className="nt-more"
+      onClick={onMore}
+      aria-label={`${hidden} more on ${title}`}
+      style={style}
+    >
+      {body}
+    </button>
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -173,17 +231,18 @@ const HOLD_MS = 220
 
 function StickerSlot({
   item,
-  slot,
-  dot,
+  place,
+  plan,
+  z,
   sheet,
 }: {
   item: GuestItem
-  slot: Slot
-  dot: number
+  place: Placement
+  plan: Plan
+  z: number
   sheet: SheetProps
 }) {
   const reduced = useReducedMotion() ?? false
-  const [ratio, setRatio] = useState<number | null>(null)
   const [offset, setOffset] = useState<{ x: number; y: number } | null>(null)
   const drag = useRef<Drag | null>(null)
   const suppressClick = useRef(false)
@@ -195,7 +254,8 @@ function StickerSlot({
   const peelable = Boolean(sheet.peelable && sheet.onPeel && !got)
   const claim = sheet.claimOf?.(item)
   const price = sheet.showPrice ? formatPrice(item.price) : null
-  const fresh = sheet.mode !== 'got' && isNew(item, sheet.now)
+  // r2 #7/#35: owner only, from newBadgeIds (72h, unopened, max 2).
+  const fresh = sheet.mode === 'board' && Boolean(sheet.newIds?.has(item.id))
   const printed = sheet.printedId === item.id
   const landing = sheet.landingId === item.id
   const landed = sheet.landedId === item.id
@@ -203,11 +263,12 @@ function StickerSlot({
     sheet.mode === 'got' &&
     sheet.newestGotId != null &&
     sheet.newestGotId !== item.id
-  const dotSide = fresh || seeded(item.id, 'dot-side') < 0.5 ? 'left' : 'right'
-
-  // Box height follows the image (wide shoes, tall chairs), capped at 4:3.
-  const height =
-    ratio && ratio > 0 ? Math.max(0.36, Math.min(0.75, 1 / ratio)) : 0.75
+  const u = (value: number) => scaled(plan, value)
+  /** Point relative to the die bbox. */
+  const at = (point: { x: number; y: number }) => ({
+    left: u(point.x - place.x),
+    top: u(point.y - place.y),
+  })
 
   // While lifted, stop the page from scrolling under the finger.
   useEffect(() => {
@@ -318,52 +379,47 @@ function StickerSlot({
     }
   }
 
-  const style = {
-    '--x': slot.x,
-    '--y': slot.y,
-    '--s': slot.size,
-    '--h': height,
-    '--z': slot.z,
-  } as CSSProperties
-
-  const d = `calc(${dot} * 100cqw)`
-  const dotStyle: CSSProperties =
-    dotSide === 'right'
-      ? { left: `calc(100% - ${dot} * 70cqw)`, top: `calc(${dot} * -25cqw)` }
-      : { left: `calc(${dot} * -30cqw)`, top: `calc(${dot} * -22cqw)` }
-  const starSize = `max(40px, calc(${dot} * 118cqw))`
-  const burstSize = `max(64px, calc(${dot} * 210cqw))`
-  const labelTilt = (seeded(item.id, 'label') * 2 - 1) * 4
-
-  const caption = captionFor(item, sheet, ghost, old)
+  const style: CSSProperties = {
+    left: u(place.x),
+    top: u(place.y),
+    width: u(place.w),
+    height: u(place.h),
+    zIndex: z,
+  }
+  // r3: never below ⌀44 on screen, larger for long prices; grow around the
+  // planned centre so the dot keeps its spot on the corner.
+  const dot = dotDiameter(price)
+  const dotGrow = (dot - place.dot.size) / 2
+  const dotSize = `max(${u(dot)}, ${dot}px)`
+  const dotAt = at({ x: place.dot.x - dotGrow, y: place.dot.y - dotGrow })
+  // r3: keep the dot inside the sheet edge (900/1024 right lane).
+  const dotStyle: CSSProperties = {
+    ...dotAt,
+    left: dotLeft(String(dotAt.left), u(place.x), dotSize),
+  }
+  const caption = captionFor(item, sheet, ghost)
+  const captionStyle: CSSProperties = {
+    ...at(place.caption),
+    width: u(place.caption.w),
+  }
+  // r2 B3·04: claim pill on the sticker's bottom-inner corner.
+  const claimStyle: CSSProperties =
+    place.lane === 'R'
+      ? { left: u(-8), top: u(place.h - 20) }
+      : { right: u(-8), top: u(place.h - 20) }
 
   if (ghost) {
     return (
       <div className="nt-slot" data-ghost style={style}>
-        <Ghost item={item} rotate={slot.rotate} />
-        {sheet.mode === 'public' ? (
-          // Claim view (as-claim-390): label low on the ghost, no caption.
-          <GotLabel
-            text={gotLabel(gotTime(item))}
-            style={{
-              left: '-4%',
-              top: '66%',
-              transform: `rotate(${-3 + labelTilt / 2}deg)`,
-            }}
+        <Ghost item={item} rotate={place.rotate} />
+        <GotLabel text="GOT" style={at(place.pill)} />
+        {caption ? (
+          <Caption
+            title={caption.title}
+            sub={caption.sub}
+            style={captionStyle}
           />
-        ) : (
-          <>
-            <GotLabel
-              text={gotLabel(gotTime(item))}
-              style={{
-                left: '28%',
-                top: -16,
-                transform: `rotate(${-4 + labelTilt / 2}deg)`,
-              }}
-            />
-            <Caption title={item.title} sub="peeled · in Got" />
-          </>
-        )}
+        ) : null}
       </div>
     )
   }
@@ -399,6 +455,7 @@ function StickerSlot({
         aria-label={stickerLabel(item, {
           now: sheet.now,
           showPrice: sheet.showPrice,
+          fresh,
         })}
         aria-describedby={peelable ? 'nt-peel-help' : undefined}
         style={{
@@ -440,9 +497,9 @@ function StickerSlot({
         >
           <StickerArt
             item={item}
-            rotate={slot.rotate}
+            rotate={place.rotate}
             className={old ? 'nt-old' : undefined}
-            onAspect={setRatio}
+            onAspect={(ratio) => reportAspect(item, ratio)}
           />
           {price ? (
             <PriceDot
@@ -451,8 +508,8 @@ function StickerSlot({
                 item.id,
                 sheet.mode === 'got' ? 'yellow' : sheet.fill,
               )}
-              size={d}
-              rotate={dotRotation(item.id)}
+              size={dotSize}
+              rotate={place.lane === 'R' ? 8 : -8}
               style={dotStyle}
             />
           ) : null}
@@ -462,35 +519,24 @@ function StickerSlot({
         <PrintStar
           animate={printed}
           reduced={reduced}
-          size={starSize}
-          rotate={12}
-          style={{
-            right: `calc(${dot} * -30cqw)`,
-            top: `calc(${dot} * -40cqw)`,
-          }}
+          size={u(place.star.size)}
+          rotate={10}
+          style={at(place.star)}
         />
       ) : null}
-      {sheet.mode === 'got' || (sheet.mode === 'public' && got) ? (
+      {sheet.mode === 'got' ? (
         <motion.span
-          style={{
-            position: 'absolute',
-            left: '30%',
-            top: 'calc(100% + 14px)',
-            zIndex: 6,
-          }}
+          style={{ position: 'absolute', zIndex: 6, ...at(place.pill) }}
           initial={landed ? { opacity: 0 } : false}
           animate={{ opacity: 1 }}
           transition={{
-            delay: landed ? (reduced ? 0 : MOTION.label.delay + 0.14) : 0,
+            delay: landed ? (reduced ? 0 : MOTION.label.delay + 0.12) : 0,
             duration: MOTION.label.duration,
           }}
         >
           <GotLabel
-            text={gotLabel(gotTime(item))}
-            style={{
-              position: 'relative',
-              transform: `rotate(${labelTilt}deg)`,
-            }}
+            text="GOT"
+            style={{ position: 'relative', transform: 'rotate(-4deg)' }}
           />
         </motion.span>
       ) : null}
@@ -499,23 +545,24 @@ function StickerSlot({
           className="nt-burst"
           style={{
             position: 'absolute',
-            right: `calc(${dot} * -60cqw)`,
-            top: `calc(${dot} * -90cqw)`,
+            right: u(-36),
+            top: u(-44),
             zIndex: 7,
           }}
           {...burstAnimation(reduced)}
         >
-          <Star label="GOT IT!" size={burstSize} fill="red" fontSize={15} />
+          <Star label="GOT IT!" size={u(84)} fill="red" fontSize={15} />
         </motion.span>
       ) : null}
       {claim?.claimed ? (
         <motion.span
-          style={{ position: 'absolute', left: '14%', top: '82%', zIndex: 7 }}
+          style={{ position: 'absolute', zIndex: 7, ...claimStyle }}
           initial={reduced ? { opacity: 0 } : { scale: 1.1, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={slapTransition(reduced)}
         >
           <ClaimedTag
+            mine={claim.mine}
             style={{
               position: 'relative',
               transform: `rotate(${MOTION.claimed.rotate}deg)`,
@@ -524,11 +571,17 @@ function StickerSlot({
         </motion.span>
       ) : null}
       {caption ? (
-        <Caption
-          title={caption.title}
-          sub={caption.sub}
-          below={sheet.mode === 'got' || (sheet.mode === 'public' && got)}
-        />
+        <motion.span
+          className="nt-cap-wrap"
+          style={captionStyle}
+          initial={landed ? { opacity: 0 } : false}
+          animate={{ opacity: 1 }}
+          transition={{
+            delay: landed && !reduced ? MOTION.label.delay + 0.12 : 0,
+          }}
+        >
+          <Caption title={caption.title} sub={caption.sub} />
+        </motion.span>
       ) : null}
     </motion.div>
   )
@@ -538,41 +591,27 @@ function captionFor(
   item: GuestItem,
   sheet: SheetProps,
   ghost: boolean,
-  old: boolean,
 ): { title: string; sub: string | null } | null {
   if (ghost) return { title: item.title, sub: 'peeled · in Got' }
-  if (sheet.mode === 'got') {
-    const sub =
-      sheet.categories && sheet.allItems
-        ? gotSubCaption(item, sheet.allItems, sheet.categories, {
-            newest: !old && sheet.newestGotId === item.id,
-            showPrice: sheet.showPrice,
-          })
-        : sheet.showPrice
-          ? formatPrice(item.price)
-          : null
-    return { title: item.title, sub }
-  }
-  if (sheet.mode === 'public') return null
+  // B1·08: the Got sheet's caption sub is the date.
+  if (sheet.mode === 'got')
+    return { title: item.title, sub: gotDate(gotTime(item)) }
+  // r2 §6: captions stay on in public, title + brand.
   return { title: item.title, sub: item.brand || null }
 }
 
 function Caption({
   title,
   sub,
-  below = false,
+  style,
 }: {
   title: string
   sub: string | null
-  below?: boolean
+  style?: CSSProperties
 }) {
   return (
-    <span
-      className="nt-cap"
-      aria-hidden="true"
-      style={below ? { top: 'calc(100% + 52px)' } : undefined}
-    >
-      {title}
+    <span className="nt-cap" aria-hidden="true" style={style}>
+      <b>{title}</b>
       {sub ? <span>{sub}</span> : null}
     </span>
   )

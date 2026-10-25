@@ -24,6 +24,7 @@ import type { LinkProduct } from '#/lib/discovery/link-reader'
 import { readProductLink } from '#/lib/discovery/read-link'
 import { cutForPrint, printFromLink } from '#/lib/images/print-sticker'
 import type { PrintedSticker } from '#/lib/images/print-sticker'
+import { linkChip } from '#/lib/sticker/link-chip'
 import { categoryTag, formatPrice, tagColors } from '#/lib/sticker/sheets'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 
@@ -60,6 +61,7 @@ export function PrintFlow({
   const itemId = useRef(crypto.randomUUID()).current
   const [text, setText] = useState(initial)
   const [pasted, setPasted] = useState(false)
+  const [fieldFocused, setFieldFocused] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
   const [manual, setManual] = useState(false)
@@ -295,7 +297,14 @@ export function PrintFlow({
         <input
           aria-label="Shop link or product name"
           placeholder="Paste a link or type a name"
-          value={text}
+          // r2 #31: the formatted link once parsed; the raw URL while editing.
+          value={
+            phase === 'ready' && !fieldFocused && looksLikeLink(text)
+              ? linkChip(text.trim())
+              : text
+          }
+          onFocus={() => setFieldFocused(true)}
+          onBlur={() => setFieldFocused(false)}
           inputMode="url"
           enterKeyHint="go"
           autoFocus={!initial}
@@ -304,7 +313,8 @@ export function PrintFlow({
             setPasted(false)
           }}
         />
-        {canPaste ? (
+        {/* r2 #27: the Paste pill hides once the field has a value. */}
+        {canPaste && !text ? (
           <button type="button" onClick={() => void paste()}>
             <ClipboardTextIcon aria-hidden="true" />
             {pasted ? 'Pasted' : 'Paste'}
@@ -485,17 +495,21 @@ export function PrintFlow({
               }}
             />
           ) : (
-            <h2>{title}</h2>
+            // r2 #28: pencil 16 after the title; the meta stays clean.
+            <h2>
+              {title}
+              <button
+                type="button"
+                className="nt-ptitle-edit"
+                aria-label="Edit title"
+                onClick={() => setEditing(true)}
+              >
+                <PencilSimpleIcon aria-hidden="true" />
+              </button>
+            </h2>
           )}
           <p className="nt-pmeta">
             {[brand, price].filter(Boolean).join(' · ')}
-            <button
-              type="button"
-              aria-label="Edit title"
-              onClick={() => setEditing(true)}
-            >
-              <PencilSimpleIcon aria-hidden="true" />
-            </button>
           </p>
         </div>
       ) : null}

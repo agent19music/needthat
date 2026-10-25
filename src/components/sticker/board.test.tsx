@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 
-import { StickerBoard } from './board'
+import { StickerBoard, deskRows } from './board'
 import type { StickerBoardProps } from './board'
 import { category, item } from '../../../test/fixtures'
 import { renderWithRouter } from '../../../test/router'
@@ -124,9 +124,71 @@ describe('StickerBoard (1440)', () => {
       if (!element) throw new Error('no got sheet')
       return element
     })
-    expect(within(gotSheet).getByText('THE GOT PAGE')).toBeInTheDocument()
+    expect(within(gotSheet).getByText('GOT PAGE')).toBeInTheDocument()
     expect(
       within(gotSheet).getByRole('button', { name: /^Old tee/ }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('deskRows', () => {
+  const tag = (key: string, unsorted = false) =>
+    ({ key, unsorted, stickers: [] }) as unknown as Parameters<
+      typeof deskRows
+    >[0][number]
+  const kinds = (rows: ReturnType<typeof deskRows>) =>
+    rows.map((row) =>
+      row.map(
+        (cell) =>
+          `${typeof cell.sheet === 'string' ? cell.sheet : cell.sheet.key}:${cell.kind}`,
+      ),
+    )
+
+  it('≥1200: first sheet wide, the rest two-up, Got row with the #unsorted tile', () => {
+    const rows = deskRows(
+      [tag('desk'), tag('fits'), tag('football'), tag('u', true)],
+      [],
+      true,
+    )
+    expect(kinds(rows)).toEqual([
+      ['desk:wide'],
+      ['fits:half', 'football:half'],
+      ['got:got-row', 'u:tile'],
+    ])
+  })
+
+  it('768–1199 band (B1·07): every sheet two-up incl. #unsorted, Got full width', () => {
+    const rows = deskRows(
+      [tag('desk'), tag('fits'), tag('football'), tag('u', true)],
+      [],
+      true,
+      true,
+    )
+    expect(kinds(rows)).toEqual([
+      ['desk:half', 'fits:half'],
+      ['football:half', 'u:half'],
+      ['got:got-wide'],
+    ])
+  })
+
+  it('band: an odd sheet out goes full width; blank sheets stay tiles', () => {
+    const rows = deskRows(
+      [tag('desk'), tag('fits'), tag('home')],
+      [tag('b1'), tag('b2')],
+      true,
+      true,
+    )
+    expect(kinds(rows)).toEqual([
+      ['desk:half', 'fits:half'],
+      ['home:wide'],
+      ['got:got-wide'],
+      ['b1:tile', 'b2:tile'],
+    ])
+  })
+
+  it('band without Got has no Got row', () => {
+    expect(kinds(deskRows([tag('a'), tag('b')], [], false, true))).toEqual([
+      ['a:half', 'b:half'],
+    ])
   })
 })

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { category, item } from '../../../test/fixtures'
 import {
-  BOX_RATIO,
+  addedDate,
   GOT_PAGE_SIZE,
+  NEW_PER_SHEET,
   NEW_WINDOW_MS,
   ROTATION,
   SHEET_CYCLE,
@@ -17,10 +18,9 @@ import {
   gotSubCaption,
   isNew,
   isTagColor,
-  layoutSheet,
   moreLabel,
+  newBadgeIds,
   nextTagColor,
-  overlapRatio,
   pageOf,
   paginateGot,
   seeded,
@@ -43,17 +43,17 @@ const tag = (
 ): GuestCategory => ({ id: `cat-${name}`, name, createdAt, color })
 
 describe('tag colour', () => {
-  it('cycles blue → green → red and wraps, including negatives', () => {
-    expect(SHEET_CYCLE).toEqual(['blue', 'green', 'red'])
+  it('cycles blue → green → red → white and wraps, including negatives', () => {
+    expect(SHEET_CYCLE).toEqual(['blue', 'green', 'red', 'white'])
     expect([0, 1, 2, 3, 4, 5].map(cycleColor)).toEqual([
       'blue',
       'green',
       'red',
+      'white',
       'blue',
       'green',
-      'red',
     ])
-    expect(cycleColor(-1)).toBe('red')
+    expect(cycleColor(-1)).toBe('white')
   })
 
   it('never hands yellow to a user tag (yellow is Got only)', () => {
@@ -93,7 +93,10 @@ describe('tag colour', () => {
     expect(nextTagColor([])).toBe('blue')
     expect(nextTagColor([tag('a', 1)])).toBe('green')
     expect(nextTagColor([tag('a', 1), tag('b', 2)])).toBe('red')
-    expect(nextTagColor([tag('a', 1), tag('b', 2), tag('c', 3)])).toBe('blue')
+    expect(nextTagColor([tag('a', 1), tag('b', 2), tag('c', 3)])).toBe('white')
+    expect(
+      nextTagColor([tag('a', 1), tag('b', 2), tag('c', 3), tag('d', 4)]),
+    ).toBe('blue')
   })
 
   it('never puts a price dot on its own sheet colour', () => {
@@ -107,15 +110,15 @@ describe('tag colour', () => {
   })
 })
 
-describe('NEW window (Bau Q5: added in the last 7 days)', () => {
-  it('is new right after adding and until just before 7 days', () => {
+describe('NEW window (r2 #7: 72h, unopened, max 2 per sheet)', () => {
+  it('is new right after adding and until just before 72h', () => {
     expect(isNew(item({ createdAt: NOW }), NOW)).toBe(true)
-    expect(isNew(item({ createdAt: NOW - 3 * DAY }), NOW)).toBe(true)
+    expect(isNew(item({ createdAt: NOW - 2 * DAY }), NOW)).toBe(true)
     expect(isNew(item({ createdAt: NOW - NEW_WINDOW_MS + 1 }), NOW)).toBe(true)
   })
 
-  it('stops at exactly 7 days and after', () => {
-    expect(NEW_WINDOW_MS).toBe(7 * DAY)
+  it('stops at exactly 72h and after', () => {
+    expect(NEW_WINDOW_MS).toBe(3 * DAY)
     expect(isNew(item({ createdAt: NOW - NEW_WINDOW_MS }), NOW)).toBe(false)
     expect(isNew(item({ createdAt: NOW - 30 * DAY }), NOW)).toBe(false)
   })
@@ -123,6 +126,19 @@ describe('NEW window (Bau Q5: added in the last 7 days)', () => {
   it('tolerates a little clock skew but not far-future rows', () => {
     expect(isNew(item({ createdAt: NOW + 30_000 }), NOW)).toBe(true)
     expect(isNew(item({ createdAt: NOW + DAY }), NOW)).toBe(false)
+  })
+
+  it('badges at most two unopened stickers per sheet, newest first', () => {
+    const items = [
+      item({ id: 'a', createdAt: NOW - 3000 }),
+      item({ id: 'b', createdAt: NOW - 2000 }),
+      item({ id: 'c', createdAt: NOW - 1000 }),
+      item({ id: 'old', createdAt: NOW - 4 * DAY }),
+    ]
+    expect([...newBadgeIds(items, NOW)]).toEqual(['c', 'b'])
+    expect([...newBadgeIds(items, NOW, new Set(['c']))]).toEqual(['b'])
+    expect(newBadgeIds(items, NOW, new Set(['a', 'b', 'c'])).size).toBe(0)
+    expect(NEW_PER_SHEET).toBe(2)
   })
 
   it('never marks a got sticker as new', () => {
@@ -464,97 +480,6 @@ describe('Got paging (Bau Q13)', () => {
   })
 })
 
-describe('layoutSheet', () => {
-  const many = (count: number) =>
-    Array.from({ length: count }, (_, index) =>
-      item({ createdAt: 1000 + index }),
-    )
-
-  it('shows everything on the 390 column and grows with content', () => {
-    const two = layoutSheet(many(2), 'column')
-    const six = layoutSheet(many(6), 'column')
-    expect(six.slots).toHaveLength(6)
-    expect(six.hidden).toBe(0)
-    expect(six.height).toBeGreaterThan(two.height)
-  })
-
-  it('zig-zags two columns on 390', () => {
-    const { slots } = layoutSheet(many(4), 'column')
-    expect(slots[0].x).toBeGreaterThan(slots[1].x)
-    expect(slots[2].x).toBeGreaterThan(slots[3].x)
-    for (let index = 1; index < slots.length; index += 1)
-      expect(slots[index].y).toBeGreaterThan(slots[index - 1].y)
-  })
-
-  it('caps desktop sheets and reports the rest for "+N more"', () => {
-    expect(layoutSheet(many(6), 'wide')).toMatchObject({ hidden: 3 })
-    expect(layoutSheet(many(6), 'half')).toMatchObject({ hidden: 2 })
-    expect(layoutSheet(many(3), 'got')).toMatchObject({ hidden: 1 })
-    expect(layoutSheet(many(2), 'half').hidden).toBe(0)
-  })
-
-  it('keeps every sticker inside the sheet width', () => {
-    for (const variant of [
-      'column',
-      'wide',
-      'half',
-      'got',
-      'page',
-      'wall',
-    ] as const) {
-      for (const slot of layoutSheet(many(8), variant).slots) {
-        expect(slot.x).toBeGreaterThan(0)
-        expect(slot.x + slot.size).toBeLessThan(1)
-        expect(slot.y).toBeGreaterThan(0)
-      }
-    }
-  })
-
-  it('keeps neighbours to at most ~15% overlap', () => {
-    for (const variant of [
-      'column',
-      'wide',
-      'half',
-      'got',
-      'page',
-      'wall',
-    ] as const) {
-      const { slots } = layoutSheet(many(8), variant)
-      for (let index = 1; index < slots.length; index += 1)
-        expect(
-          overlapRatio(slots[index - 1], slots[index]),
-        ).toBeLessThanOrEqual(0.2)
-    }
-  })
-
-  it('stacks newest on top and is deterministic', () => {
-    const items = many(4)
-    const { slots } = layoutSheet(items, 'half')
-    expect(slots.at(-1)?.z).toBe(4)
-    expect(slots[0].z).toBe(1)
-    expect(layoutSheet(items, 'half')).toEqual(layoutSheet(items, 'half'))
-  })
-
-  it('opens a full desktop sheet as rows of five that grow', () => {
-    const twelve = layoutSheet(many(12), 'wall')
-    expect(twelve.hidden).toBe(0)
-    expect(twelve.slots).toHaveLength(12)
-    expect(twelve.slots[5].y).toBeGreaterThan(twelve.slots[0].y + 0.2)
-    expect(twelve.height).toBeGreaterThan(layoutSheet(many(5), 'wall').height)
-  })
-
-  it('prints the newest got sticker larger on the Got page', () => {
-    const page = layoutSheet(many(5), 'page')
-    const [first, ...rest] = page.slots
-    expect(first.size).toBeGreaterThan(rest[0].size)
-    expect(new Set(rest.map((slot) => slot.size)).size).toBe(1)
-  })
-
-  it('uses 4:3 sticker boxes', () => {
-    expect(BOX_RATIO).toBe(0.75)
-  })
-})
-
 describe('stickerKind', () => {
   it('maps image keys to the right sticker treatment', () => {
     expect(stickerKind('/api/images/d-abc-1')).toBe('die')
@@ -563,5 +488,16 @@ describe('stickerKind', () => {
     expect(stickerKind('https://shop.example/a.jpg')).toBe('photo')
     expect(stickerKind(null)).toBe('none')
     expect(stickerKind('')).toBe('none')
+  })
+})
+
+describe('addedDate (r6, same rule as Got)', () => {
+  const now = new Date(2026, 9, 25, 12).getTime()
+  it('drops the year in the current year', () => {
+    expect(addedDate(new Date(2026, 9, 25, 9).getTime(), now)).toBe('25 Oct')
+    expect(addedDate(new Date(2026, 0, 2).getTime(), now)).toBe('2 Jan')
+  })
+  it('keeps the year otherwise', () => {
+    expect(addedDate(new Date(2025, 11, 31).getTime(), now)).toBe('31 Dec 2025')
   })
 })

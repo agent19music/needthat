@@ -36,7 +36,7 @@ export type SavedItemInput = {
   updatedAt: number
 }
 
-export type TagColor = 'blue' | 'green' | 'red'
+export type TagColor = 'blue' | 'green' | 'red' | 'white'
 
 export type SavedCategoryInput = {
   id: string

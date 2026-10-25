@@ -9,8 +9,7 @@ export const LINK_TIMEOUT_MS = 8000
 export const LINK_MAX_BYTES = 1_500_000
 
 export type ReadLinkResult =
-  | { ok: true; product: LinkProduct }
-  | { ok: false; message: string }
+  { ok: true; product: LinkProduct } | { ok: false; message: string }
 
 const UNREADABLE = "We couldn't read that link. Add it by hand"
 

@@ -108,17 +108,15 @@ describe('0004_sticker_sheet migration', () => {
     const rows = db
       .prepare(`SELECT id, color FROM categories ORDER BY id`)
       .all()
-    expect(Object.fromEntries(rows.map((row) => [row.id, row.color]))).toEqual(
-      {
-        c1: 'blue',
-        c2: 'green',
-        c3: 'red',
-        c4: 'blue',
-        a: 'green',
-        b: 'red',
-        x: 'blue',
-      },
-    )
+    expect(Object.fromEntries(rows.map((row) => [row.id, row.color]))).toEqual({
+      c1: 'blue',
+      c2: 'green',
+      c3: 'red',
+      c4: 'blue',
+      a: 'green',
+      b: 'red',
+      x: 'blue',
+    })
   })
 
   it('adds share toggles that default on, and the claims table', () => {
@@ -144,5 +142,22 @@ describe('0004_sticker_sheet migration', () => {
     expect(
       journal.entries.map((entry: { tag: string }) => entry.tag),
     ).toContain('0004_sticker_sheet')
+  })
+})
+
+describe('0005_share_on migration', () => {
+  it('adds share_on, default on for existing lists', () => {
+    const db = new DatabaseSync(':memory:')
+    const files = migrationFiles()
+    const target = files.indexOf('0005_share_on.sql')
+    expect(target).toBeGreaterThan(-1)
+    files.slice(0, target).forEach((file) => applyMigration(db, file))
+    db.exec(
+      `INSERT INTO lists (id, user_id, name, created_at, updated_at) VALUES ('l1','u1','W',1,1)`,
+    )
+    applyMigration(db, files[target])
+    expect(
+      db.prepare(`SELECT share_on FROM lists WHERE id='l1'`).get(),
+    ).toEqual({ share_on: 1 })
   })
 })

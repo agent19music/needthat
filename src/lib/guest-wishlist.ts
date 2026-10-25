@@ -6,7 +6,7 @@ export type GuestCategory = {
   id: string
   name: string
   /** Sheet colour; optional so tags saved before the Sticker Sheet still load. */
-  color?: 'blue' | 'green' | 'red' | null
+  color?: 'blue' | 'green' | 'red' | 'white' | null
   createdAt: number
 }
 
@@ -73,10 +73,15 @@ export async function loadGuestCategories(): Promise<Array<GuestCategory>> {
   return categories.sort((a, b) => a.createdAt - b.createdAt)
 }
 
-export async function saveGuestCategory(category: GuestCategory): Promise<void> {
+export async function saveGuestCategory(
+  category: GuestCategory,
+): Promise<void> {
   const db = await openDatabase()
   await requestToPromise(
-    db.transaction(CATEGORIES, 'readwrite').objectStore(CATEGORIES).put(category),
+    db
+      .transaction(CATEGORIES, 'readwrite')
+      .objectStore(CATEGORIES)
+      .put(category),
   )
   db.close()
 }

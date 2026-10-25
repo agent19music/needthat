@@ -10,7 +10,7 @@ export const priceInput = z.object({
     .transform((value) => value.toUpperCase()),
 })
 
-export const tagColorInput = z.enum(['blue', 'green', 'red'])
+export const tagColorInput = z.enum(['blue', 'green', 'red', 'white'])
 
 export const itemInput = z.object({
   id: z.string().trim().min(1).max(80),
@@ -77,6 +77,7 @@ export const saveAccountCategory = createServerFn({ method: 'POST' })
 export const shareSettingsInput = z.object({
   showPrices: z.boolean().optional(),
   allowClaims: z.boolean().optional(),
+  sharing: z.boolean().optional(),
 })
 
 export const loadShareSettings = createServerFn({ method: 'GET' }).handler(

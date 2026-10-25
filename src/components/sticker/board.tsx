@@ -9,18 +9,23 @@ import type { CSSProperties, ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Link } from '@tanstack/react-router'
 import {
+  ArrowsDownUpIcon,
+  CaretDownIcon,
+  CheckCircleIcon,
   CheckIcon,
   ClipboardTextIcon,
-  KeyReturnIcon,
+  ClockIcon,
+  HandPointingIcon,
   LinkIcon,
   ListIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusIcon,
   SignOutIcon,
+  SortAscendingIcon,
+  SortDescendingIcon,
   SquaresFourIcon,
   StackIcon,
-  StickerIcon,
   UserIcon,
   WarningCircleIcon,
 } from '@phosphor-icons/react'
@@ -31,7 +36,8 @@ import { ItemPanel } from '#/components/sticker/item-panel'
 import { FlyLayer, Overlay, Toast } from '#/components/sticker/overlays'
 import type { Flight, ToastState } from '#/components/sticker/overlays'
 import { PrintFlow } from '#/components/sticker/print-flow'
-import { ShareSheet, shareUrl } from '#/components/sticker/share-sheet'
+import { PriceSheet } from '#/components/sticker/price-sheet'
+import { ShareSheet } from '#/components/sticker/share-sheet'
 import type {
   ShareSettings,
   ShareTarget,
@@ -42,13 +48,19 @@ import { burstTotalMs } from '#/components/sticker/motion'
 import {
   GOT_PAGE_SIZE,
   buildSheets,
+  categoryTag,
+  formatTotal,
   gotCountLabel,
+  isSortMode,
+  newBadgeIds,
   pageOf,
   paginateGot,
   sheetKicker,
   sheetMeta,
 } from '#/lib/sticker/sheets'
-import type { SheetFill, TagSheet } from '#/lib/sticker/sheets'
+import type { SheetFill, SortMode, TagSheet } from '#/lib/sticker/sheets'
+import { useOpened } from '#/lib/sticker/opened'
+import type { LayoutKind } from '#/lib/sticker/layout'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 
 export type BoardLayout = 'grid' | 'stacks' | 'list'
@@ -65,6 +77,7 @@ type Open =
   | { kind: 'print'; text: string; categoryId: string | null }
   | { kind: 'share'; key: string | null }
   | { kind: 'arrange'; key: string }
+  | { kind: 'price'; id: string }
 
 export type StickerBoardProps = {
   items: ReadonlyArray<GuestItem>
@@ -85,6 +98,11 @@ export type StickerBoardProps = {
   onReorder: (ids: Array<string>) => Promise<void>
   onEdit: (item: GuestItem) => void
   onDelete: (item: GuestItem) => void
+  /**
+   * r3 overflow (Move to sheet, Edit price): saves one changed item.
+   * Optimistic like onSetGot: roll back and throw on failure.
+   */
+  onUpdate?: (item: GuestItem) => Promise<void>
   onSearch: () => void
   onSignOut: () => void
   /** Desktop Grid / List keep the old views; they render below the tabs. */
@@ -114,6 +132,23 @@ export function useWide() {
   )
 }
 
+const BAND_QUERY = '(min-width: 768px) and (max-width: 1199px)'
+
+function subscribeBand(callback: () => void) {
+  const query = window.matchMedia(BAND_QUERY)
+  query.addEventListener('change', callback)
+  return () => query.removeEventListener('change', callback)
+}
+
+/** r3 B1·07: the 768–1199 band (two-up sheets, Got full width). */
+export function useBand() {
+  return useSyncExternalStore(
+    subscribeBand,
+    () => window.matchMedia(BAND_QUERY).matches,
+    () => false,
+  )
+}
+
 function wait(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 }
@@ -124,10 +159,133 @@ function frames() {
   )
 }
 
+/** "Got" is a tab key of its own (r2 B1·08). Sheet keys are ids or "#name". */
+const GOT_TAB = 'got'
+
+/**
+ * r2 §5 sort: global, persisted per user. Kept in localStorage (per user,
+ * per device) because a server setting needs a migration; flagged.
+ */
+const SORT_KEY = 'nt-sort-v1'
+
+function readSort(owner: string): SortMode {
+  try {
+    const raw = localStorage.getItem(`${SORT_KEY}:${owner}`)
+    return isSortMode(raw) ? raw : 'priority'
+  } catch {
+    return 'priority'
+  }
+}
+
+function useSort(owner: string) {
+  const [sort, setSort] = useState<SortMode>('priority')
+  useEffect(() => setSort(readSort(owner)), [owner])
+  return [
+    sort,
+    (next: SortMode) => {
+      setSort(next)
+      try {
+        localStorage.setItem(`${SORT_KEY}:${owner}`, next)
+      } catch {
+        // Private mode: this session only.
+      }
+    },
+  ] as const
+}
+
+/** Option labels from the ADDENDUM §5 list. */
+export const SORT_OPTIONS: ReadonlyArray<{
+  value: SortMode
+  label: string
+  icon: ReactNode
+}> = [
+  {
+    value: 'priority',
+    label: 'Priority',
+    icon: <ArrowsDownUpIcon aria-hidden="true" />,
+  },
+  {
+    value: 'newest',
+    label: 'Newest first',
+    icon: <ClockIcon aria-hidden="true" />,
+  },
+  {
+    value: 'price-desc',
+    label: 'Price, high to low',
+    icon: <SortDescendingIcon aria-hidden="true" />,
+  },
+  {
+    value: 'price-asc',
+    label: 'Price, low to high',
+    icon: <SortAscendingIcon aria-hidden="true" />,
+  },
+]
+
+export function sortLabel(mode: SortMode) {
+  return (
+    SORT_OPTIONS.find((option) => option.value === mode)?.label ?? 'Priority'
+  )
+}
+
+/** #unsorted takes paper-2 + hairline (B1·05); tags keep their colour. */
+export function fillOf(sheet: TagSheet): SheetFill {
+  return sheet.unsorted ? 'paper' : sheet.color
+}
+
+/**
+ * r2 #15 / B1·06: first sheet full width (876×320), then two-up halves.
+ * An odd sheet out goes full width. Got (560×292) shares its row with the
+ * #unsorted tile (292); blank sheets and a spare #unsorted are tiles.
+ */
+export type DeskCell = { sheet: TagSheet | 'got'; kind: LayoutKind }
+
+export function deskRows(
+  filled: ReadonlyArray<TagSheet>,
+  blank: ReadonlyArray<TagSheet>,
+  hasGot: boolean,
+  band = false,
+): Array<Array<DeskCell>> {
+  const named = filled.filter((sheet) => !sheet.unsorted)
+  const unsorted = filled.find((sheet) => sheet.unsorted) ?? null
+  const rows: Array<Array<DeskCell>> = []
+  // B1·07: in the band every sheet (#unsorted too) is two-up; ≥1200 the first is wide.
+  const paired = band
+    ? [...named, ...(unsorted ? [unsorted] : [])]
+    : named.slice(1)
+  if (!band && named[0]) rows.push([{ sheet: named[0], kind: 'wide' }])
+  for (let index = 0; index + 1 < paired.length; index += 2)
+    rows.push([
+      { sheet: paired[index], kind: 'half' },
+      { sheet: paired[index + 1], kind: 'half' },
+    ])
+  if (paired.length % 2 === 1)
+    rows.push([{ sheet: paired[paired.length - 1], kind: 'wide' }])
+  const tiles: Array<TagSheet> = [
+    ...(!band && unsorted ? [unsorted] : []),
+    ...blank,
+  ]
+  if (hasGot && band) rows.push([{ sheet: 'got', kind: 'got-wide' }])
+  if (hasGot && !band) {
+    const partner = tiles.shift()
+    rows.push([
+      { sheet: 'got', kind: 'got-row' },
+      ...(partner ? [{ sheet: partner, kind: 'tile' as const }] : []),
+    ])
+  }
+  for (let index = 0; index < tiles.length; index += 3)
+    rows.push(
+      tiles
+        .slice(index, index + 3)
+        .map((sheet) => ({ sheet, kind: 'tile' as const })),
+    )
+  return rows
+}
+
 /** The whole Sticker Sheet board: desktop (≥768) and phone layouts. */
 export function StickerBoard(props: StickerBoardProps) {
   const { items, categories, status, user } = props
   const wide = useWide()
+  const band = useBand()
   const [now, setNow] = useState(() => Date.now())
   const [tab, setTab] = useState<string | null>(null)
   const [open, setOpen] = useState<Open | null>(null)
@@ -140,16 +298,26 @@ export function StickerBoard(props: StickerBoardProps) {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [newSheet, setNewSheet] = useState<string | null>(null)
   const [newSheetError, setNewSheetError] = useState<string | null>(null)
-  const [note, setNote] = useState('')
+  const [sortOpen, setSortOpen] = useState(false)
   const toastId = useRef(0)
   const failed = useRef(new Set<string>())
+  const returnScroll = useRef<number | null>(null)
+  const [sort, setSort] = useSort(
+    user?.username ?? (user ? user.name : 'guest'),
+  )
+  const opened = useOpened()
 
   const sets = useMemo(
-    () => buildSheets(items, categories),
-    [items, categories],
+    () => buildSheets(items, categories, sort),
+    [items, categories, sort],
   )
+  // #unsorted is always last before Got (B1·05).
   const tagSheets = useMemo(
-    () => [...sets.filled, ...sets.blank].sort((a, b) => a.number - b.number),
+    () =>
+      [...sets.filled, ...sets.blank].sort(
+        (a, b) =>
+          Number(a.unsorted) - Number(b.unsorted) || a.number - b.number,
+      ),
     [sets],
   )
   const sheetByCategory = useMemo(() => {
@@ -157,11 +325,17 @@ export function StickerBoard(props: StickerBoardProps) {
     tagSheets.forEach((sheet) => map.set(sheet.key, sheet))
     return map
   }, [tagSheets])
-  const wantCount = items.filter((item) => item.status !== 'purchased').length
+  const wanted = items.filter((item) => item.status !== 'purchased')
+  const wantCount = wanted.length
   const gotCount = sets.got.count
+  // r2 #22: counts keep the pre-peel value until 120ms after the landing.
+  const shownGot = previousCount ?? gotCount
   const showPrice = true
   const perPage = wide ? GOT_PAGE_SIZE.desktop : GOT_PAGE_SIZE.mobile
-  const selected = tab ? (sheetByCategory.get(tab) ?? null) : null
+  const selected =
+    tab && tab !== GOT_TAB ? (sheetByCategory.get(tab) ?? null) : null
+  // r2 §5 / B4·03: sort and layout switch disabled until 2+ items.
+  const fewItems = items.length < 2
 
   useEffect(() => {
     document.documentElement.dataset.board = 'sticker'
@@ -176,12 +350,14 @@ export function StickerBoard(props: StickerBoardProps) {
   }, [])
 
   useEffect(() => {
-    if (tab && !sheetByCategory.has(tab)) setTab(null)
-  }, [tab, sheetByCategory])
+    if (tab === GOT_TAB ? gotCount === 0 : tab && !sheetByCategory.has(tab))
+      setTab(null)
+  }, [tab, sheetByCategory, gotCount])
 
+  // B1·09: the Got toast stays 5s.
   useEffect(() => {
     if (!toast) return
-    const timer = window.setTimeout(() => setToast(null), 6000)
+    const timer = window.setTimeout(() => setToast(null), 5000)
     return () => window.clearTimeout(timer)
   }, [toast])
 
@@ -225,6 +401,8 @@ export function StickerBoard(props: StickerBoardProps) {
     setNow(Date.now())
     setPreviousCount(gotCount)
     setLandingId(item.id)
+    // B1·09: after a peel Got opens full screen; X returns with scroll kept.
+    if (!wide) returnScroll.current = window.scrollY
     setOpen(wide ? null : { kind: 'got' })
     setGotPage(0)
     const saving = props.onSetGot(item, true)
@@ -275,6 +453,8 @@ export function StickerBoard(props: StickerBoardProps) {
     setLandingId(null)
     if (failed.current.has(item.id)) return
     setLandedId(item.id)
+    // r2 #22: label and count update 120ms after the sticker lands.
+    window.setTimeout(() => setPreviousCount(null), 120)
     if ('vibrate' in navigator) navigator.vibrate(12)
     say({ kind: 'got', item })
     window.setTimeout(() => setLandedId(null), burstTotalMs(false) + 400)
@@ -291,6 +471,29 @@ export function StickerBoard(props: StickerBoardProps) {
         message: "Couldn't save. Try again",
         retry: () => void unpeel(item),
       })
+    }
+  }
+
+  async function update(item: GuestItem) {
+    if (!props.onUpdate) return
+    try {
+      await props.onUpdate({ ...item, updatedAt: Date.now() })
+    } catch {
+      say({
+        kind: 'error',
+        message: "Couldn't save. Try again",
+        retry: () => void update(item),
+      })
+    }
+  }
+
+  async function copyLink(item: GuestItem) {
+    if (!item.sourceUrl) return
+    try {
+      await navigator.clipboard.writeText(item.sourceUrl)
+      say({ kind: 'info', message: 'Link copied' })
+    } catch {
+      // Clipboard blocked (permissions, insecure origin): nothing to undo.
     }
   }
 
@@ -323,23 +526,22 @@ export function StickerBoard(props: StickerBoardProps) {
     const pages = paginateGot(sets.got.items, perPage)
     setGotPage(itemId ? Math.max(0, pageOf(pages, itemId)) : 0)
     setPreviousCount(null)
+    returnScroll.current = window.scrollY
     setOpen({ kind: 'got' })
+  }
+
+  function closeOverlay() {
+    const wasGot = open?.kind === 'got'
+    setOpen(null)
+    if (wasGot && returnScroll.current !== null) {
+      const y = returnScroll.current
+      returnScroll.current = null
+      requestAnimationFrame(() => window.scrollTo(0, y))
+    }
   }
 
   function startPrint(text = '', categoryId: string | null = tab) {
     setOpen({ kind: 'print', text, categoryId })
-  }
-
-  async function copyLink(sheetId: string | null) {
-    if (!user?.username) return
-    try {
-      await navigator.clipboard.writeText(
-        shareUrl(props.origin, user.username, sheetId),
-      )
-      say({ kind: 'info', message: 'Link copied' })
-    } catch {
-      say({ kind: 'error', message: "Couldn't copy the link" })
-    }
   }
 
   const shareTarget = (key: string | null): ShareTarget => {
@@ -358,7 +560,7 @@ export function StickerBoard(props: StickerBoardProps) {
       tag: '#all',
       fill: 'blue',
       stickers: items,
-      total: sheetMeta(all.length, null),
+      total: formatTotal(all),
     }
   }
 
@@ -391,17 +593,41 @@ export function StickerBoard(props: StickerBoardProps) {
           type="button"
           role="tab"
           className="nt-tab"
-          data-fill={sheet.stickers.length === 0 ? 'blank' : sheet.color}
+          data-fill={
+            sheet.stickers.length === 0
+              ? 'blank'
+              : sheet.unsorted
+                ? 'paper'
+                : sheet.color
+          }
           aria-selected={tab === sheet.key}
           onClick={() => setTab(sheet.key)}
         >
           {sheet.tag} <b>{sheet.wanted.length}</b>
         </button>
       ))}
+      {/* r2 B1·08 / #34: Got is the last tab, from the first peel on. */}
+      {gotCount > 0 ? (
+        <button
+          type="button"
+          role="tab"
+          className="nt-tab"
+          data-fill="yellow"
+          aria-selected={tab === GOT_TAB}
+          onClick={() => (wide ? openGot() : setTab(GOT_TAB))}
+        >
+          <CheckCircleIcon
+            weight="fill"
+            aria-hidden="true"
+            className="nt-tab-check"
+          />
+          Got <b>{shownGot}</b>
+        </button>
+      ) : null}
       {newSheet === null ? (
         <button
           type="button"
-          className="nt-tab"
+          className="nt-tab nt-tab-add"
           data-fill="blank"
           aria-label="New sheet"
           onClick={() => setNewSheet('')}
@@ -410,8 +636,9 @@ export function StickerBoard(props: StickerBoardProps) {
         </button>
       ) : (
         <form
-          className="nt-tab"
+          className="nt-tab nt-tab-new"
           data-fill="blank"
+          data-invalid={newSheetError ? 'true' : undefined}
           onSubmit={(event) => {
             event.preventDefault()
             void addSheet()
@@ -422,20 +649,21 @@ export function StickerBoard(props: StickerBoardProps) {
             aria-label="New sheet name"
             autoFocus
             value={newSheet}
+            maxLength={20}
             enterKeyHint="done"
-            style={{
-              width: 110,
-              border: 0,
-              background: 'transparent',
-              font: 'inherit',
-              outline: 'none',
+            aria-invalid={newSheetError ? true : undefined}
+            onChange={(event) => {
+              setNewSheetError(null)
+              setNewSheet(event.target.value.toLowerCase())
             }}
-            onChange={(event) => setNewSheet(event.target.value)}
             onBlur={() => {
               if (!newSheet.trim()) setNewSheet(null)
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Escape') setNewSheet(null)
+              if (event.key === 'Escape') {
+                setNewSheet(null)
+                setNewSheetError(null)
+              }
             }}
           />
           <button type="submit" aria-label="Add sheet">
@@ -446,12 +674,65 @@ export function StickerBoard(props: StickerBoardProps) {
     </>
   )
 
+  const sortControl = (
+    <SortControl
+      wide={wide}
+      value={sort}
+      disabled={fewItems}
+      open={sortOpen}
+      onOpen={setSortOpen}
+      onChange={(next) => {
+        setSort(next)
+        setSortOpen(false)
+      }}
+    />
+  )
+
+  const seg = (
+    <div
+      className="nt-seg"
+      role="group"
+      aria-label="Layout"
+      data-disabled={fewItems ? 'true' : undefined}
+    >
+      <SegButton
+        current={props.layout}
+        value="grid"
+        disabled={fewItems}
+        onLayout={props.onLayout}
+        icon={<SquaresFourIcon aria-hidden="true" />}
+      >
+        Grid
+      </SegButton>
+      <SegButton
+        current={props.layout}
+        value="stacks"
+        disabled={fewItems}
+        onLayout={props.onLayout}
+        icon={<StackIcon weight="fill" aria-hidden="true" />}
+      >
+        Stacks
+      </SegButton>
+      <SegButton
+        current={props.layout}
+        value="list"
+        disabled={fewItems}
+        onLayout={props.onLayout}
+        icon={<ListIcon aria-hidden="true" />}
+      >
+        List
+      </SegButton>
+    </div>
+  )
+
+  const newFor = (sheet: TagSheet) => newBadgeIds(sheet.stickers, now, opened)
+
   const overlays = (
     <>
       <Overlays
         {...props}
         open={open}
-        setOpen={setOpen}
+        setOpen={(next) => (next === null ? closeOverlay() : setOpen(next))}
         now={now}
         wide={wide}
         sets={sets}
@@ -465,12 +746,25 @@ export function StickerBoard(props: StickerBoardProps) {
         onPeel={(item, from) => void peel(item, from)}
         onUnpeel={(item) => void unpeel(item)}
         onPrintItem={print}
+        onUpdateItem={props.onUpdate ? (item) => void update(item) : undefined}
+        onCopyLink={(item) => void copyLink(item)}
         onSeeSheet={(key) => {
           setOpen(null)
           setTab(key)
         }}
         shareTarget={shareTarget}
-        onToast={(message) => say({ kind: 'info', message })}
+        onToast={(message, undo) =>
+          say({
+            kind: 'info',
+            message,
+            undo: undo
+              ? () => {
+                  setToast(null)
+                  undo()
+                }
+              : undefined,
+          })
+        }
         topBar={
           <MobileTop
             user={user}
@@ -501,12 +795,38 @@ export function StickerBoard(props: StickerBoardProps) {
     </>
   )
 
+  const hasItems = items.length > 0
+  const pendingGot = landingId ?? (previousCount !== null ? landedId : null)
+  const countedGot = pendingGot
+    ? sets.got.items.filter((item) => item.id !== pendingGot)
+    : sets.got.items
+  const gotSheetProps = {
+    ...commonSheet,
+    fill: 'yellow' as const,
+    kicker: 'GOT PAGE',
+    title: 'Got',
+    meta: sheetMeta(countedGot.length, formatTotal(countedGot), {
+      compact: true,
+    }),
+    metaPill: countedGot.length > 0 ? gotCountLabel(countedGot, now) : null,
+    stickers: sets.got.items,
+    mode: 'got' as const,
+    peelable: false,
+    landingId,
+    landedId,
+  }
+
   if (!wide) {
-    const shown = selected
-      ? [selected, ...peekAfter(tagSheets, selected)]
-      : sets.filled.length > 0
-        ? [...sets.filled, ...sets.blank]
-        : sets.blank.slice(0, 1)
+    const showGot = tab === GOT_TAB
+    const shown = showGot
+      ? []
+      : selected
+        ? [selected, ...peekAfter(tagSheets, selected)]
+        : sets.filled.length > 0
+          ? [...sets.filled, ...sets.blank]
+          : sets.blank.slice(0, 1)
+    // r2 #33: no FAB while the account has no stickers.
+    const fab = hasItems
     return (
       <div className="nt-root nt-mobile">
         <KissCutFilters />
@@ -526,8 +846,11 @@ export function StickerBoard(props: StickerBoardProps) {
                     @{user.username} ·
                     <button
                       type="button"
-                      onClick={() => setOpen({ kind: 'share', key: tab })}
+                      onClick={() =>
+                        setOpen({ kind: 'share', key: selected?.key ?? null })
+                      }
                     >
+                      <LinkIcon aria-hidden="true" />
                       Share
                     </button>
                   </>
@@ -541,10 +864,14 @@ export function StickerBoard(props: StickerBoardProps) {
           </div>
           <Stats
             want={wantCount}
-            got={gotCount}
+            got={shownGot}
             onGot={() => openGot()}
             className="nt-pr-stats"
           />
+        </div>
+        <div className="nt-mtools">
+          {sortControl}
+          {seg}
         </div>
         <div className="nt-mtabs" role="tablist" aria-label="Sheets">
           {tabs}
@@ -554,6 +881,15 @@ export function StickerBoard(props: StickerBoardProps) {
             <Loading />
           ) : status === 'error' ? (
             <LoadError onRetry={props.onRetry} />
+          ) : showGot ? (
+            <Sheet
+              {...gotSheetProps}
+              id="nt-got-sheet"
+              variant="got-column"
+              hint={false}
+              fab={fab}
+              active
+            />
           ) : shown.length === 0 ? (
             <BlankSheet first onPaste={() => startPrint('', null)} />
           ) : (
@@ -570,7 +906,7 @@ export function StickerBoard(props: StickerBoardProps) {
                 <Sheet
                   key={sheet.key}
                   {...commonSheet}
-                  fill={sheet.color}
+                  fill={fillOf(sheet)}
                   kicker={sheetKicker(sheet.number)}
                   title={sheet.tag}
                   meta={sheetMeta(sheet.wanted.length, sheet.total, {
@@ -579,28 +915,38 @@ export function StickerBoard(props: StickerBoardProps) {
                   variant="column"
                   stickers={sheet.stickers}
                   mode="board"
+                  newIds={newFor(sheet)}
+                  hint={index === 0}
+                  fab={fab && index === shown.length - 1}
                   active={index === 0 && (selected !== null || tab === null)}
                   className={index > 0 && selected ? 'nt-peek' : undefined}
                 >
-                  {index === 0 ? (
-                    <span className="nt-sheet-hint">Peel to mark got</span>
+                  {index === 0 && sheet.wanted.length > 0 ? (
+                    <span className="nt-sheet-hint">
+                      <HandPointingIcon aria-hidden="true" />
+                      Peel to mark got
+                    </span>
                   ) : null}
                 </Sheet>
               ),
             )
           )}
         </div>
-        <button type="button" className="nt-fab" onClick={() => startPrint()}>
-          <StickerIcon weight="fill" aria-hidden="true" />
-          Print a sticker
-        </button>
+        {fab ? (
+          <button type="button" className="nt-fab" onClick={() => startPrint()}>
+            <PlusIcon weight="bold" aria-hidden="true" />
+            Print a sticker
+          </button>
+        ) : null}
         {overlays}
       </div>
     )
   }
 
-  const boardSheets = selected ? [selected] : sets.filled
-  const blanks = selected ? [] : sets.blank
+  const rows = selected
+    ? [[{ sheet: selected, kind: 'wall' as const }]]
+    : deskRows(sets.filled, sets.blank, gotCount > 0, band)
+  const empty = status === 'ready' && !hasItems && !selected
   return (
     <div className="nt-root">
       <KissCutFilters />
@@ -609,11 +955,32 @@ export function StickerBoard(props: StickerBoardProps) {
           #needthat
         </Link>
         <div className="nt-top-right">
-          <button type="button" className="nt-search" onClick={props.onSearch}>
+          <button
+            type="button"
+            className="nt-search"
+            onClick={props.onSearch}
+            aria-label="Search your stickers"
+          >
             <MagnifyingGlassIcon aria-hidden="true" />
-            <span>Search your stickers</span>
+            {/* B1·07: the band's 220 pill reads "Search stickers"; an icon below 1024. */}
+            <span className="nt-search-long">Search your stickers</span>
+            <span className="nt-search-short">Search stickers</span>
             <kbd>Ctrl K</kbd>
           </button>
+          {sortControl}
+          {seg}
+          {/* B4·03: the top-bar Print pill hides while the account is empty. */}
+          {hasItems ? (
+            <button
+              type="button"
+              className="nt-pill"
+              data-tone="yellow"
+              onClick={() => startPrint()}
+            >
+              <PlusIcon weight="bold" aria-hidden="true" />
+              Print a sticker
+            </button>
+          ) : null}
           <AccountButton user={user} onSignOut={props.onSignOut} size={42} />
         </div>
       </header>
@@ -621,21 +988,30 @@ export function StickerBoard(props: StickerBoardProps) {
         <aside className="nt-cover-col">
           <div className="nt-cover">
             <Avatar user={user} />
-            <Stats want={wantCount} got={gotCount} onGot={() => openGot()} />
-            <h1>{user?.name || 'Your sheet'}</h1>
-            {user?.username ? (
-              <span className="nt-handle">@{user.username}</span>
-            ) : null}
+            <div className="nt-cover-id">
+              <h1>{user?.name || 'Your sheet'}</h1>
+              {user?.username ? (
+                <span className="nt-handle">@{user.username}</span>
+              ) : null}
+            </div>
+            <CoverStats
+              want={wantCount}
+              got={shownGot}
+              total={formatTotal(wanted)}
+              onGot={() => openGot()}
+            />
             <div className="nt-actions">
               {user?.username ? (
                 <button
                   type="button"
                   className="nt-pill"
                   data-tone="ink"
-                  onClick={() => void copyLink(selected?.categoryId ?? null)}
+                  onClick={() =>
+                    setOpen({ kind: 'share', key: selected?.key ?? null })
+                  }
                 >
                   <LinkIcon weight="bold" aria-hidden="true" />
-                  Copy share link
+                  Share
                 </button>
               ) : null}
               {user ? (
@@ -650,69 +1026,11 @@ export function StickerBoard(props: StickerBoardProps) {
               )}
             </div>
           </div>
-          <div className="nt-labl">
-            <span className="nt-tape" aria-hidden="true" />
-            <h4>Once that cheque hits, I need…</h4>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault()
-                const text = note.trim()
-                setNote('')
-                startPrint(text, selected?.categoryId ?? null)
-              }}
-            >
-              <input
-                aria-label="Paste a link or type a name"
-                placeholder="White Nike Shox"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
-              <button
-                type="submit"
-                className="nt-enter"
-                aria-label="Print a sticker"
-              >
-                <KeyReturnIcon aria-hidden="true" />
-              </button>
-            </form>
-            <p>
-              Paste a link or type a name. It prints as a sticker on the sheet
-              you pick.
-            </p>
-          </div>
         </aside>
         <main className="nt-board-col">
           <div className="nt-tabrow">
             <div className="nt-tabs" role="tablist" aria-label="Sheets">
               {tabs}
-            </div>
-            <div className="nt-tab-tools">
-              <div className="nt-seg" role="group" aria-label="Layout">
-                <SegButton
-                  current={props.layout}
-                  value="grid"
-                  onLayout={props.onLayout}
-                  icon={<SquaresFourIcon aria-hidden="true" />}
-                >
-                  Grid
-                </SegButton>
-                <SegButton
-                  current={props.layout}
-                  value="stacks"
-                  onLayout={props.onLayout}
-                  icon={<StackIcon weight="fill" aria-hidden="true" />}
-                >
-                  Stacks
-                </SegButton>
-                <SegButton
-                  current={props.layout}
-                  value="list"
-                  onLayout={props.onLayout}
-                  icon={<ListIcon aria-hidden="true" />}
-                >
-                  List
-                </SegButton>
-              </div>
             </div>
           </div>
           <div className="nt-board">
@@ -724,109 +1042,75 @@ export function StickerBoard(props: StickerBoardProps) {
               </div>
             ) : status === 'error' ? (
               <LoadError onRetry={props.onRetry} />
+            ) : empty ? (
+              <EmptyDesk onPrint={() => startPrint('', null)} />
             ) : (
               <div className="nt-board-grid">
-                {boardSheets.length === 0 && blanks.length === 0 ? (
-                  <div className="nt-wide">
-                    <BlankSheet first onPaste={() => startPrint('', null)} />
-                  </div>
-                ) : null}
-                {boardSheets.map((sheet, index) => {
-                  if (sheet.stickers.length === 0)
-                    return (
-                      <div key={sheet.key} className="nt-wide">
-                        <BlankSheet
-                          sheet={sheet}
-                          onPaste={() => startPrint('', sheet.categoryId)}
-                        />
-                      </div>
-                    )
-                  const variant = selected
-                    ? 'wall'
-                    : index === 0
-                      ? 'wide'
-                      : 'half'
-                  return (
-                    <div
-                      key={sheet.key}
-                      className={
-                        selected
-                          ? 'nt-wide'
-                          : index === 0
-                            ? 'nt-wide'
-                            : 'nt-half'
-                      }
-                    >
-                      <Sheet
-                        {...commonSheet}
-                        fill={sheet.color}
-                        kicker={sheetKicker(sheet.number)}
-                        title={sheet.tag}
-                        meta={sheetMeta(sheet.wanted.length, sheet.total)}
-                        variant={variant}
-                        stickers={sheet.stickers}
-                        mode="board"
-                        onMore={() => setTab(sheet.key)}
-                      >
-                        {index === 0 && !selected ? (
-                          <span className="nt-sheet-hint" data-place="left">
-                            Peel a sticker off to mark it got.
-                          </span>
-                        ) : null}
-                      </Sheet>
-                    </div>
-                  )
-                })}
-                <div className="nt-gotsheet">
-                  <Sheet
-                    {...commonSheet}
-                    id="nt-got-sheet"
-                    fill="yellow"
-                    kicker="THE GOT PAGE"
-                    title="Got"
-                    variant="got"
-                    stickers={sets.got.items}
-                    mode="got"
-                    peelable={false}
-                    newestGotId={sets.got.items[0]?.id ?? null}
-                    landingId={landingId}
-                    landedId={landedId}
-                    onMore={() => openGot()}
+                {rows.map((row, rowIndex) => (
+                  <div
+                    key={rowIndex}
+                    className="nt-row"
+                    data-row={row.map((cell) => cell.kind).join(' ')}
                   >
-                    <span className="nt-cnt" data-place="sheet">
-                      {gotCountLabel(sets.got.items, now)}
-                    </span>
-                    <span className="nt-sheet-hint" data-place="left">
-                      Peeled stickers land here, dated.
-                    </span>
-                  </Sheet>
-                </div>
-                {blanks.map((sheet) => (
-                  <div key={sheet.key} className="nt-blanksheet">
-                    <BlankSheet
-                      sheet={sheet}
-                      compact
-                      onPaste={() => startPrint('', sheet.categoryId)}
-                    />
+                    {row.map((cell) => {
+                      if (cell.sheet === 'got')
+                        return (
+                          <div
+                            key="got"
+                            className="nt-cell"
+                            data-kind={cell.kind}
+                          >
+                            <Sheet
+                              {...gotSheetProps}
+                              id="nt-got-sheet"
+                              variant={cell.kind}
+                              onMore={() => openGot()}
+                            />
+                          </div>
+                        )
+                      const sheet = cell.sheet
+                      return (
+                        <div
+                          key={sheet.key}
+                          className="nt-cell"
+                          data-kind={cell.kind}
+                        >
+                          {sheet.stickers.length === 0 ? (
+                            <BlankSheet
+                              sheet={sheet}
+                              compact
+                              onPaste={() => startPrint('', sheet.categoryId)}
+                            />
+                          ) : (
+                            <Sheet
+                              {...commonSheet}
+                              fill={fillOf(sheet)}
+                              kicker={sheetKicker(sheet.number)}
+                              title={sheet.tag}
+                              meta={sheetMeta(
+                                sheet.wanted.length,
+                                sheet.total,
+                                {
+                                  compact: true,
+                                },
+                              )}
+                              variant={cell.kind}
+                              stickers={sheet.stickers}
+                              mode="board"
+                              newIds={newFor(sheet)}
+                              onMore={() => setTab(sheet.key)}
+                            />
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 ))}
               </div>
             )}
           </div>
           <div className="nt-under">
-            {newSheet === null ? (
-              <button
-                type="button"
-                className="nt-pill"
-                data-tone="white"
-                onClick={() => setNewSheet('')}
-              >
-                <PlusIcon weight="bold" aria-hidden="true" />
-                New sheet
-              </button>
-            ) : (
-              <span />
-            )}
+            <span />
             <p className="nt-foot">
               #needthat is a product of{' '}
               <a
@@ -838,7 +1122,6 @@ export function StickerBoard(props: StickerBoardProps) {
               </a>
             </p>
           </div>
-          {newSheetError ? <p className="nt-err">{newSheetError}</p> : null}
         </main>
       </div>
       {overlays}
@@ -857,23 +1140,207 @@ function SegButton({
   onLayout,
   icon,
   children,
+  disabled,
 }: {
   current: BoardLayout
   value: BoardLayout
   onLayout: (layout: BoardLayout) => void
   icon: ReactNode
   children: ReactNode
+  disabled?: boolean
 }) {
+  // B1·01 / B1·06: icon-only segments; the label is for screen readers.
   return (
     <button
       type="button"
       aria-pressed={current === value}
+      aria-label={String(children)}
+      disabled={disabled}
       onClick={() => onLayout(value)}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
     >
       {icon}
-      {children}
     </button>
+  )
+}
+
+/** r2 B1·02 (390 bottom sheet) / B1·03 (1440 popover 248w). */
+function SortControl({
+  wide,
+  value,
+  disabled,
+  open,
+  onOpen,
+  onChange,
+}: {
+  wide: boolean
+  value: SortMode
+  disabled: boolean
+  open: boolean
+  onOpen: (open: boolean) => void
+  onChange: (value: SortMode) => void
+}) {
+  const chip = (
+    <button
+      type="button"
+      className="nt-sort"
+      disabled={disabled}
+      aria-haspopup={wide ? 'menu' : 'dialog'}
+      aria-label={`Sort: ${sortLabel(value)}`}
+      onClick={wide ? undefined : () => onOpen(true)}
+    >
+      <ArrowsDownUpIcon aria-hidden="true" />
+      <span>{sortLabel(value)}</span>
+      <CaretDownIcon aria-hidden="true" />
+    </button>
+  )
+  const options = SORT_OPTIONS.map((option) => (
+    <SortRow
+      key={option.value}
+      option={option}
+      checked={option.value === value}
+      wide={wide}
+      onChange={onChange}
+    />
+  ))
+  if (wide)
+    return (
+      <Menu.Root modal={false} open={open} onOpenChange={onOpen}>
+        <Menu.Trigger asChild>{chip}</Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Content
+            className="nt-layer nt-dd nt-sortmenu"
+            align="center"
+            sideOffset={8}
+          >
+            <Menu.RadioGroup
+              value={value}
+              onValueChange={(next) => {
+                if (isSortMode(next)) onChange(next)
+              }}
+            >
+              {options}
+            </Menu.RadioGroup>
+          </Menu.Content>
+        </Menu.Portal>
+      </Menu.Root>
+    )
+  return (
+    <>
+      {chip}
+      <Overlay
+        open={open}
+        onClose={() => onOpen(false)}
+        kind="bottom"
+        title="Sort"
+      >
+        <div className="nt-sortsheet" role="radiogroup" aria-label="Sort">
+          {options}
+        </div>
+      </Overlay>
+    </>
+  )
+}
+
+function SortRow({
+  option,
+  checked,
+  wide,
+  onChange,
+}: {
+  option: (typeof SORT_OPTIONS)[number]
+  checked: boolean
+  wide: boolean
+  onChange: (value: SortMode) => void
+}) {
+  const body = (
+    <>
+      {option.icon}
+      <span>{option.label}</span>
+      {checked ? (
+        <CheckIcon weight="bold" aria-hidden="true" className="nt-sort-check" />
+      ) : null}
+    </>
+  )
+  if (wide)
+    return (
+      <Menu.RadioItem className="nt-dd-item nt-sort-row" value={option.value}>
+        {body}
+      </Menu.RadioItem>
+    )
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      className="nt-sort-row"
+      onClick={() => onChange(option.value)}
+    >
+      {body}
+    </button>
+  )
+}
+
+/** 1440 cover stats inline: "15 wants  4 got  $8,692" (B1·06, r2 #9). */
+function CoverStats({
+  want,
+  got,
+  total,
+  onGot,
+}: {
+  want: number
+  got: number
+  total: string | null
+  onGot: () => void
+}) {
+  return (
+    <div className="nt-cover-stats">
+      <span>
+        <b>{want}</b>
+        <small>{want === 1 ? 'want' : 'wants'}</small>
+      </span>
+      <button
+        type="button"
+        onClick={onGot}
+        aria-label={`${got} got. Open the Got page`}
+      >
+        <b>{got}</b>
+        <small>got</small>
+      </button>
+      {total ? <b className="nt-cover-total">{total}</b> : null}
+    </div>
+  )
+}
+
+/** B4·03: one paper-2 sheet, three silhouettes, a yellow Print CTA. */
+function EmptyDesk({ onPrint }: { onPrint: () => void }) {
+  return (
+    <section
+      className="nt-sheet nt-empty-desk"
+      data-fill="paper"
+      aria-label="Your sheet"
+    >
+      <div className="nt-empty-sils" aria-hidden="true">
+        {COMPACT_SLOTS.map((style, index) => (
+          <span key={index} className="nt-eslot" style={style} />
+        ))}
+      </div>
+      <div className="nt-empty-copy">
+        <b>This is your sheet</b>
+        <p>Paste a link to print the first sticker.</p>
+        <button
+          type="button"
+          className="nt-cta"
+          data-tone="yellow"
+          onClick={onPrint}
+        >
+          <PlusIcon weight="bold" aria-hidden="true" />
+          Print a sticker
+        </button>
+        <span className="nt-paste-hint">
+          <kbd>Ctrl V</kbd>
+        </span>
+      </div>
+    </section>
   )
 }
 
@@ -1195,9 +1662,11 @@ function Overlays(
     onPeel: (item: GuestItem, from: DOMRect) => void
     onUnpeel: (item: GuestItem) => void
     onPrintItem: (item: GuestItem) => Promise<void>
+    onUpdateItem?: (item: GuestItem) => void
+    onCopyLink: (item: GuestItem) => void
     onSeeSheet: (key: string) => void
     shareTarget: (key: string | null) => ShareTarget
-    onToast: (message: string) => void
+    onToast: (message: string, undo?: () => void) => void
     topBar: ReactNode
   },
 ) {
@@ -1206,6 +1675,16 @@ function Overlays(
   const item =
     open?.kind === 'item' ? items.find((entry) => entry.id === open.id) : null
   const sheet = item ? props.sheetFor(item) : null
+  const priceItem =
+    open?.kind === 'price' ? items.find((entry) => entry.id === open.id) : null
+  const update = props.onUpdateItem
+  const moveTargets = [
+    ...props.categories.map((category) => ({
+      id: category.id,
+      tag: categoryTag(category.name),
+    })),
+    { id: null, tag: 'No category' },
+  ]
   const arrangeSheet =
     open?.kind === 'arrange'
       ? [...props.sets.filled].find((entry) => entry.key === open.key)
@@ -1218,6 +1697,7 @@ function Overlays(
         kind="panel"
         title={item?.title ?? 'Sticker'}
         fill={sheet?.color}
+        className={props.wide ? 'nt-itemwide' : undefined}
       >
         {item ? (
           <ItemPanel
@@ -1250,6 +1730,47 @@ function Overlays(
             }
             onOpen={(entry) => setOpen({ kind: 'item', id: entry.id })}
             onSeeSheet={() => (sheet ? props.onSeeSheet(sheet.key) : close())}
+            onShare={
+              props.user?.username
+                ? () => setOpen({ kind: 'share', key: sheet?.key ?? null })
+                : undefined
+            }
+            moveTargets={moveTargets}
+            onMove={
+              update
+                ? (entry, categoryId) => update({ ...entry, categoryId })
+                : undefined
+            }
+            onEditPrice={
+              update
+                ? (entry) => setOpen({ kind: 'price', id: entry.id })
+                : undefined
+            }
+            onCopyLink={props.onCopyLink}
+            onPrintSticker={printSticker}
+            wide={props.wide}
+          />
+        ) : null}
+      </Overlay>
+
+      <Overlay
+        open={Boolean(priceItem)}
+        onClose={() =>
+          priceItem ? setOpen({ kind: 'item', id: priceItem.id }) : close()
+        }
+        kind={props.wide ? 'modal' : 'bottom'}
+        title="Price"
+        className="nt-price-layer"
+      >
+        {priceItem && update ? (
+          <PriceSheet
+            price={priceItem.price}
+            fallbackCurrency={pricedCurrency(items)}
+            onClose={() => setOpen({ kind: 'item', id: priceItem.id })}
+            onSave={(price) => {
+              setOpen({ kind: 'item', id: priceItem.id })
+              update({ ...priceItem, price })
+            }}
           />
         ) : null}
       </Overlay>
@@ -1259,6 +1780,7 @@ function Overlays(
         onClose={close}
         kind="panel"
         title="Got page"
+        className="nt-full"
       >
         <GotPage
           items={items}
@@ -1272,7 +1794,8 @@ function Overlays(
           landingId={props.landingId}
           landedId={props.landedId}
           onOpen={(entry) => setOpen({ kind: 'item', id: entry.id })}
-          top={props.wide ? null : props.topBar}
+          onClose={close}
+          wide={props.wide}
         />
       </Overlay>
 
@@ -1297,7 +1820,7 @@ function Overlays(
       <Overlay
         open={open?.kind === 'share'}
         onClose={close}
-        kind="panel"
+        kind={props.wide ? 'modal' : 'panel'}
         title="Share sheet"
       >
         {open?.kind === 'share' && props.user?.username ? (
@@ -1311,6 +1834,8 @@ function Overlays(
             onSettings={props.onSettings}
             onClose={close}
             onToast={props.onToast}
+            onShareAll={() => props.setOpen({ kind: 'share', key: null })}
+            wide={props.wide}
           />
         ) : null}
       </Overlay>
@@ -1335,4 +1860,43 @@ function Overlays(
       </Overlay>
     </>
   )
+}
+
+/** The currency most of the owner's priced stickers use (B2·03 default). */
+export function pricedCurrency(items: ReadonlyArray<GuestItem>): string {
+  const counts = new Map<string, number>()
+  for (const item of items) {
+    if (item.price)
+      counts.set(
+        item.price.currency,
+        (counts.get(item.price.currency) ?? 0) + 1,
+      )
+  }
+  let best = 'USD'
+  let most = 0
+  for (const [currency, count] of counts) {
+    if (count > most) {
+      best = currency
+      most = count
+    }
+  }
+  return best
+}
+
+/**
+ * B2·04 "Print sticker": prints the open sticker on its own (the print
+ * stylesheet hides everything but the panel hero). What Print should do is
+ * not specced beyond the button; flagged for Bau.
+ */
+export function printSticker() {
+  const root = document.documentElement
+  root.classList.add('nt-printing')
+  const done = () => {
+    root.classList.remove('nt-printing')
+    window.removeEventListener('afterprint', done)
+  }
+  window.addEventListener('afterprint', done)
+  window.print()
+  // Browsers without afterprint (or a blocked dialog) still get cleaned up.
+  window.setTimeout(done, 1000)
 }

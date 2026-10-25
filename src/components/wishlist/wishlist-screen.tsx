@@ -82,6 +82,7 @@ export function WishlistScreen() {
   const [shareSettings, setShareSettings] = useState<ShareSettings>({
     showPrices: true,
     allowClaims: true,
+    sharing: true,
   })
   const [loadRun, setLoadRun] = useState(0)
   const removalTimer = useRef<number | null>(null)
@@ -104,6 +105,7 @@ export function WishlistScreen() {
           setShareSettings({
             showPrices: result.showPrices,
             allowClaims: result.allowClaims,
+            sharing: result.sharing,
           })
       })
       .catch(() => {
@@ -330,6 +332,34 @@ export function WishlistScreen() {
     } catch (error) {
       setItems((list) =>
         list.map((entry) => (entry.id === item.id ? current : entry)),
+      )
+      throw error
+    }
+  }
+
+  /** r3 overflow: Move to sheet / Edit price. Optimistic, rolls back. */
+  async function updateItem(item: GuestItem) {
+    const current =
+      itemsRef.current.find((entry) => entry.id === item.id) ?? item
+    // withKeptFields keeps the stored price; Edit price must win here.
+    const next: GuestItem = {
+      ...withKeptFields(item),
+      price: item.price ?? null,
+      purchasedAt: item.purchasedAt ?? current.purchasedAt ?? null,
+    }
+    setItems((list) =>
+      sortByPosition(
+        list.map((entry) => (entry.id === item.id ? next : entry)),
+      ),
+    )
+    try {
+      await saveActiveItem(signedInRef.current, next)
+      setStorageError(null)
+    } catch (error) {
+      setItems((list) =>
+        sortByPosition(
+          list.map((entry) => (entry.id === item.id ? current : entry)),
+        ),
       )
       throw error
     }
@@ -661,6 +691,7 @@ export function WishlistScreen() {
           }}
           onEdit={(item) => openEditor(draftFromItem(item))}
           onDelete={(item) => setConfirmItem(item)}
+          onUpdate={updateItem}
           onSearch={() => setCommandOpen(true)}
           onSignOut={() => void authClient.signOut()}
         />

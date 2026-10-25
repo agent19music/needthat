@@ -264,22 +264,48 @@ function readTitle(html: string) {
   return match ? decodeEntities(match[1]) : ''
 }
 
+const SIZE_PARAMS = ['width', 'height', 'w', 'h']
+
+/**
+ * Absolute, de-duplicated image URLs. Shops (Shopify especially) list the
+ * same photo at many sizes (`?width=100`, `300`, …); keep one entry per
+ * photo, at its largest size, so the cut never starts from a thumbnail.
+ */
 function uniqueUrls(values: Array<string>, base: string) {
-  const seen = new Set<string>()
-  const out: Array<string> = []
+  const best = new Map<string, { url: string; size: number }>()
   for (const value of values) {
-    let absolute: string
+    let parsed: URL
     try {
-      absolute = new URL(value.trim(), base).toString()
+      parsed = new URL(value.trim(), base)
     } catch {
       continue
     }
-    if (!/^https?:/.test(absolute) || seen.has(absolute)) continue
-    seen.add(absolute)
-    out.push(absolute)
-    if (out.length >= MAX_IMAGES) break
+    if (!/^https?:$/.test(parsed.protocol)) continue
+    const key = new URL(parsed.toString())
+    key.protocol = 'https:'
+    let size = Number.POSITIVE_INFINITY
+    for (const name of SIZE_PARAMS) {
+      const raw = key.searchParams.get(name)
+      if (raw === null) continue
+      const number = Number.parseInt(raw, 10)
+      if (Number.isFinite(number)) size = Math.min(size, number)
+      key.searchParams.delete(name)
+    }
+    const id = key.toString()
+    const seen = best.get(id)
+    if (!seen) {
+      if (best.size >= MAX_IMAGES) continue
+      best.set(id, { url: parsed.toString(), size })
+    } else if (
+      size > seen.size ||
+      (size === seen.size &&
+        seen.url.startsWith('http:') &&
+        parsed.protocol === 'https:')
+    ) {
+      best.set(id, { url: parsed.toString(), size })
+    }
   }
-  return out
+  return Array.from(best.values(), (entry) => entry.url)
 }
 
 function clean(value: string | undefined | null) {

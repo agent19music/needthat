@@ -14,7 +14,7 @@ import {
 import { StickerArt } from '#/components/sticker/sticker'
 import type { GuestItem } from '#/lib/guest-wishlist'
 
-export type OverlayKind = 'panel' | 'bottom'
+export type OverlayKind = 'panel' | 'bottom' | 'modal'
 
 /**
  * Item detail / Got page / print / share: a right panel 480 wide on desktop
@@ -46,10 +46,15 @@ export function Overlay({
           initial: reduced ? { opacity: 0 } : { y: '100%' },
           animate: { y: 0, opacity: 1 },
         }
-      : {
-          initial: reduced ? { opacity: 0 } : { opacity: 0, x: 32 },
-          animate: { opacity: 1, x: 0 },
-        }
+      : kind === 'modal'
+        ? {
+            initial: reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97 },
+            animate: { opacity: 1, scale: 1 },
+          }
+        : {
+            initial: reduced ? { opacity: 0 } : { opacity: 0, x: 32 },
+            animate: { opacity: 1, x: 0 },
+          }
   const transition = reduced
     ? { duration: MOTION.reduced.duration }
     : { duration: 0.24, ease: EASE.enter }
@@ -79,6 +84,13 @@ export function Overlay({
               asChild
               forceMount
               aria-describedby={description ? undefined : undefined}
+              // r4: the toast's Undo sits outside the dialog; pressing it
+              // must not close the panel or modal under it.
+              onInteractOutside={(event) => {
+                const target = event.target
+                if (target instanceof Element && target.closest('.nt-toast'))
+                  event.preventDefault()
+              }}
               onOpenAutoFocus={(event) => {
                 // Focus the panel itself, not its first button.
                 event.preventDefault()
@@ -89,6 +101,7 @@ export function Overlay({
                 className={[
                   'nt-layer',
                   kind === 'bottom' ? 'nt-bottom' : 'nt-panel',
+                  kind === 'modal' ? 'nt-modal' : null,
                   className,
                 ]
                   .filter(Boolean)
@@ -154,9 +167,14 @@ export function Toast({
             key={toast.id}
             className="nt-toast"
             role="status"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+            // r2 #24: centred with translateX(-50%); motion owns the transform.
+            initial={
+              reduced
+                ? { opacity: 0, x: '-50%' }
+                : { opacity: 0, x: '-50%', y: 16 }
+            }
+            animate={{ opacity: 1, x: '-50%', y: 0 }}
+            exit={{ opacity: 0, x: '-50%' }}
             transition={{
               duration: reduced ? MOTION.reduced.duration : 0.2,
               ease: EASE.enter,

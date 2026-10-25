@@ -20,14 +20,18 @@ export { categoryTag, formatPrice, formatTotal, gotTime, orderGot }
 /* Colour                                                              */
 /* ------------------------------------------------------------------ */
 
-/** User sheets cycle blue → green → red by creation order. Yellow is Got only. */
-export const SHEET_CYCLE = ['blue', 'green', 'red'] as const
+/**
+ * User sheets cycle blue → green → red → white by creation order (r2 §5
+ * New sheet). Yellow is Got only; paper is the virtual #unsorted sheet.
+ */
+export const SHEET_CYCLE = ['blue', 'green', 'red', 'white'] as const
 export type TagColor = (typeof SHEET_CYCLE)[number]
-export type SheetFill = TagColor | 'yellow' | 'blank'
+export type SheetFill = TagColor | 'yellow' | 'blank' | 'paper'
 
 export function isTagColor(value: unknown): value is TagColor {
   return (
-    typeof value === 'string' && (SHEET_CYCLE as ReadonlyArray<string>).includes(value)
+    typeof value === 'string' &&
+    (SHEET_CYCLE as ReadonlyArray<string>).includes(value)
   )
 }
 
@@ -41,7 +45,8 @@ export function byCreation<T extends { id: string; createdAt: number }>(
   categories: ReadonlyArray<T>,
 ) {
   return [...categories].sort(
-    (a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    (a, b) =>
+      a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   )
 }
 
@@ -58,7 +63,9 @@ export function tagColors(categories: ReadonlyArray<GuestCategory>) {
 }
 
 /** Colour for a tag created now: the next slot in the cycle. */
-export function nextTagColor(categories: ReadonlyArray<GuestCategory>): TagColor {
+export function nextTagColor(
+  categories: ReadonlyArray<GuestCategory>,
+): TagColor {
   return cycleColor(categories.length)
 }
 
@@ -67,8 +74,10 @@ export const SHEET_FG: Record<SheetFill, 'white' | 'ink'> = {
   blue: 'white',
   green: 'ink',
   red: 'white',
+  white: 'ink',
   yellow: 'ink',
   blank: 'ink',
+  paper: 'ink',
 }
 
 export type DotFill = 'yellow' | 'red' | 'blue' | 'green' | 'ink' | 'white'
@@ -78,8 +87,10 @@ const DOT_CHOICES: Record<SheetFill, ReadonlyArray<DotFill>> = {
   blue: ['red', 'yellow'],
   green: ['yellow', 'red'],
   red: ['yellow', 'blue'],
+  white: ['yellow', 'red'],
   yellow: ['red', 'blue'],
   blank: ['yellow', 'red'],
+  paper: ['yellow', 'red'],
 }
 
 export function dotFill(id: string, sheet: SheetFill): DotFill {
@@ -91,13 +102,84 @@ export function dotFill(id: string, sheet: SheetFill): DotFill {
 /* NEW badge                                                           */
 /* ------------------------------------------------------------------ */
 
-export const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+/** r2 #7: NEW lasts 72h (Bau's default; flagged for product). */
+export const NEW_WINDOW_MS = 72 * 60 * 60 * 1000
+export const NEW_PER_SHEET = 2
 
-/** NEW = added in the last 7 days (Bau Q5). Got stickers never show it. */
-export function isNew(item: Pick<GuestItem, 'createdAt' | 'status'>, now: number) {
+/** Inside the NEW window. Got stickers never qualify. */
+export function isNew(
+  item: Pick<GuestItem, 'createdAt' | 'status'>,
+  now: number,
+) {
   if (item.status === 'purchased') return false
   const age = now - item.createdAt
   return age >= -60_000 && age < NEW_WINDOW_MS
+}
+
+/**
+ * Stickers that wear the NEW star on one sheet: inside the window, not yet
+ * opened in the item view: the two newest, minus any already opened (r2 #7). Owner only;
+ * exports and public pages never call this.
+ */
+export function newBadgeIds(
+  items: ReadonlyArray<Pick<GuestItem, 'id' | 'createdAt' | 'status'>>,
+  now: number,
+  opened: ReadonlySet<string> = new Set(),
+) {
+  return new Set(
+    items
+      .filter((item) => isNew(item, now))
+      .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : 1))
+      // r3: the badge belongs to the two newest; opening one does not pass it
+      // on to the third-newest.
+      .slice(0, NEW_PER_SHEET)
+      .filter((item) => !opened.has(item.id))
+      .map((item) => item.id),
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Sort (r2 §5 Priority sort)                                          */
+/* ------------------------------------------------------------------ */
+
+export const SORT_MODES = [
+  'priority',
+  'newest',
+  'price-desc',
+  'price-asc',
+] as const
+export type SortMode = (typeof SORT_MODES)[number]
+
+export function isSortMode(value: unknown): value is SortMode {
+  return (
+    typeof value === 'string' &&
+    (SORT_MODES as ReadonlyArray<string>).includes(value)
+  )
+}
+
+/**
+ * Priority = manual order (list_items.position). The other modes keep
+ * priority as the tie-break; items without a price sort last.
+ */
+export function sortStickers<T extends GuestItem>(
+  items: ReadonlyArray<T>,
+  mode: SortMode,
+): Array<T> {
+  const base = orderStack(items) as Array<T>
+  if (mode === 'priority') return base
+  const rank = new Map(base.map((item, index) => [item.id, index]))
+  const tie = (a: T, b: T) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0)
+  if (mode === 'newest')
+    return [...base].sort((a, b) => b.createdAt - a.createdAt || tie(a, b))
+  const sign = mode === 'price-desc' ? -1 : 1
+  return [...base].sort((a, b) => {
+    const pa = a.price?.amount
+    const pb = b.price?.amount
+    if (pa == null && pb == null) return tie(a, b)
+    if (pa == null) return 1
+    if (pb == null) return -1
+    return sign * (pa - pb) || tie(a, b)
+  })
 }
 
 /* ------------------------------------------------------------------ */
@@ -156,6 +238,8 @@ export type TagSheet = {
   key: string
   /** Category id, or null for the virtual #all / #unsorted sheet. */
   categoryId: string | null
+  /** The virtual #unsorted sheet (paper-2, r2 §5). */
+  unsorted: boolean
   tag: string
   name: string
   color: TagColor
@@ -192,6 +276,7 @@ export type SheetSet = {
 export function buildSheets(
   items: ReadonlyArray<GuestItem>,
   categories: ReadonlyArray<GuestCategory>,
+  sort: SortMode = 'priority',
 ): SheetSet {
   const ordered = byCreation(categories)
   const colors = tagColors(ordered)
@@ -204,6 +289,7 @@ export function buildSheets(
       category.name,
       colors.get(category.id) ?? 'blue',
       items.filter((item) => item.categoryId === category.id),
+      sort,
     )
     if (sheet.stickers.length === 0) blank.push(sheet)
     else filled.push(sheet)
@@ -212,11 +298,12 @@ export function buildSheets(
     (item) => !item.categoryId || !known.has(item.categoryId),
   )
   if (ordered.length === 0) {
-    filled.push(tagSheet(null, 'all', cycleColor(0), loose))
+    filled.push(tagSheet(null, 'all', cycleColor(0), loose, sort))
   } else if (loose.length > 0) {
-    filled.push(
-      tagSheet(null, 'unsorted', cycleColor(ordered.length), loose),
-    )
+    filled.push({
+      ...tagSheet(null, 'unsorted', cycleColor(ordered.length), loose, sort),
+      unsorted: true,
+    })
   }
   filled.forEach((sheet, index) => {
     sheet.number = index + 1
@@ -243,13 +330,15 @@ function tagSheet(
   name: string,
   color: TagColor,
   members: ReadonlyArray<GuestItem>,
+  sort: SortMode = 'priority',
 ): TagSheet {
-  const stickers = orderStack(members)
+  const stickers = sortStickers(members, sort)
   const wanted = stickers.filter((item) => item.status !== 'purchased')
   return {
     kind: 'tag',
     key: categoryId ?? `#${name}`,
     categoryId,
+    unsorted: false,
     tag: categoryTag(name),
     name,
     color,
@@ -344,7 +433,7 @@ export function gotCountLabel(items: ReadonlyArray<GuestItem>, now: number) {
 /** Full accessible name for a sticker button (handoff §9). */
 export function stickerLabel(
   item: GuestItem,
-  options: { now: number; showPrice?: boolean },
+  options: { now: number; showPrice?: boolean; fresh?: boolean },
 ) {
   const price = options.showPrice === false ? null : formatPrice(item.price)
   const got =
@@ -353,11 +442,29 @@ export function stickerLabel(
     item.title,
     item.brand || null,
     price,
-    isNew(item, options.now) ? 'new' : null,
+    (options.fresh ?? isNew(item, options.now)) ? 'new' : null,
     got,
   ]
     .filter(Boolean)
     .join(', ')
+}
+
+/** Got tab caption sub: "Got 2 Sep" (B1·08). */
+export function gotDate(timestamp: number) {
+  const date = new Date(timestamp)
+  return `Got ${date.getDate()} ${date.toLocaleString('en-GB', { month: 'short' })}`
+}
+
+/**
+ * r6 panel "Added" chip, same rule as Got: "25 Oct" in the current year,
+ * "25 Oct 2025" otherwise.
+ */
+export function addedDate(timestamp: number, now: number) {
+  const date = new Date(timestamp)
+  const day = `${date.getDate()} ${date.toLocaleString('en-GB', { month: 'short' })}`
+  return date.getFullYear() === new Date(now).getFullYear()
+    ? day
+    : `${day} ${date.getFullYear()}`
 }
 
 /** "+3 more" overflow pill text. */
@@ -385,7 +492,10 @@ export function paginateGot(
   const ordered = orderGot(items.filter((item) => item.status === 'purchased'))
   const pages: Array<GotPage> = []
   for (let start = 0; start < ordered.length; start += size) {
-    pages.push({ index: pages.length, items: ordered.slice(start, start + size) })
+    pages.push({
+      index: pages.length,
+      items: ordered.slice(start, start + size),
+    })
   }
   return pages.length > 0 ? pages : [{ index: 0, items: [] }]
 }
@@ -404,173 +514,6 @@ export function pageOf(pages: ReadonlyArray<GotPage>, itemId: string) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Auto layout (handoff §3.3)                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Every value is a fraction of the sheet's width, so the components can
- * render with container-query units (cqw) and stay percent-based.
- */
-export type Slot = {
-  id: string
-  x: number
-  y: number
-  /** Sticker box width; the box is `size × size * BOX_RATIO`. */
-  size: number
-  rotate: number
-  z: number
-}
-
-export type LayoutVariant = 'column' | 'wide' | 'half' | 'got' | 'page' | 'wall'
-
-export type Layout = {
-  slots: Array<Slot>
-  /** Items that did not fit (desktop "+N more"). */
-  hidden: number
-  /** Content height in sheet widths (0 = the sheet has a fixed size). */
-  height: number
-  dot: number
-}
-
-/** Sticker boxes are 4:3 so wide shoes and tall chairs both fit. */
-export const BOX_RATIO = 0.75
-const CAPTION = 0.12
-
-const PAGE_FIRST_ROW = 1.07
-const PAGE_ROW = 0.62
-
-type Spec = {
-  width: number
-  capacity: number
-  size: number
-  /** Per-index size when a layout mixes sizes (Got page). */
-  sizeAt?: (index: number) => number
-  dot: number
-  place: (index: number) => { x: number; y: number }
-  height?: (count: number) => number
-}
-
-const SPECS: Record<LayoutVariant, Spec> = {
-  // 390: one sheet, two-column zig-zag, odd rows pushed ~40% down.
-  column: {
-    width: 358,
-    capacity: Infinity,
-    size: 0.56,
-    dot: 46 / 358,
-    place: (index) => ({
-      x: index % 2 === 0 ? 0.4 : 0.05,
-      y: 0.11 + index * 0.33,
-    }),
-    height: (count) =>
-      count === 0 ? 0.9 : 0.11 + (count - 1) * 0.33 + 0.56 * BOX_RATIO + CAPTION + 0.14,
-  },
-  // 1440 full-width sheet (876×320): header column, then a row.
-  wide: {
-    width: 876,
-    capacity: 3,
-    size: 0.19,
-    dot: 52 / 876,
-    place: (index) => ({ x: 0.27 + index * 0.215, y: 0.05 + (index % 2) * 0.012 }),
-  },
-  // 1440 two-up sheet (430×452): zig-zag of four.
-  half: {
-    width: 430,
-    capacity: 4,
-    size: 0.46,
-    dot: 44 / 430,
-    place: (index) => ({
-      x: index % 2 === 0 ? 0.5 : 0.04,
-      y: [0.1, 0.33, 0.53, 0.74][index] ?? 0,
-    }),
-  },
-  // 1440 Got sheet (560×292): two stickers after the header.
-  got: {
-    width: 560,
-    capacity: 2,
-    size: 0.27,
-    dot: 44 / 560,
-    place: (index) => ({ x: 0.4 + index * 0.27, y: 0.06 + index * 0.02 }),
-  },
-  // 1440 sheet opened from "+N more": full width, header on top, rows of five.
-  wall: {
-    width: 876,
-    capacity: Infinity,
-    size: 0.17,
-    dot: 46 / 876,
-    place: (index) => ({
-      x: 0.03 + (index % 5) * 0.195,
-      y: 0.17 + Math.floor(index / 5) * 0.2375 + (index % 2) * 0.012,
-    }),
-    height: (count) =>
-      0.17 + Math.ceil(Math.max(1, count) / 5) * 0.2375 + 0.04,
-  },
-  // Got page (S5): the newest sticker large, older ones two-up below.
-  page: {
-    width: 358,
-    capacity: Infinity,
-    size: 0.42,
-    dot: 44 / 358,
-    place: (index) =>
-      index === 0
-        ? { x: 0.11, y: 0.3 }
-        : {
-            x: (index - 1) % 2 === 0 ? 0.056 : 0.53,
-            y: PAGE_FIRST_ROW + Math.floor((index - 1) / 2) * PAGE_ROW + ((index - 1) % 2) * 0.045,
-          },
-    sizeAt: (index) => (index === 0 ? 0.62 : 0.42),
-    height: (count) =>
-      count <= 1
-        ? 1.1
-        : PAGE_FIRST_ROW + Math.ceil((count - 1) / 2) * PAGE_ROW + 0.1,
-  },
-}
-
-/** Seeded jitter of ±12px, expressed in sheet widths. */
-export const JITTER_PX = 12
-
-export function layoutSheet(
-  items: ReadonlyArray<Pick<GuestItem, 'id' | 'createdAt'>>,
-  variant: LayoutVariant,
-): Layout {
-  const spec = SPECS[variant]
-  const shown = items.slice(0, spec.capacity)
-  const jitter = JITTER_PX / spec.width
-  // Newest on top.
-  const rank = [...shown]
-    .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1))
-    .map((item) => item.id)
-  const slots = shown.map((item, index) => {
-    const base = spec.place(index)
-    const size = spec.sizeAt ? spec.sizeAt(index) : spec.size
-    const x = base.x + (seeded(item.id, 'jx') * 2 - 1) * jitter
-    const y = base.y + (seeded(item.id, 'jy') * 2 - 1) * jitter
-    return {
-      id: item.id,
-      x: round(clamp(x, 12 / spec.width, 1 - size - 12 / spec.width), 4),
-      y: round(Math.max(12 / spec.width, y), 4),
-      size,
-      rotate: stickerRotation(item.id),
-      z: rank.indexOf(item.id) + 1,
-    }
-  })
-  return {
-    slots,
-    hidden: Math.max(0, items.length - shown.length),
-    height: spec.height ? round(spec.height(shown.length), 4) : 0,
-    dot: round(spec.dot, 4),
-  }
-}
-
-/** Overlap between two sticker boxes as a share of the smaller one (≤ .15 by rule). */
-export function overlapRatio(a: Slot, b: Slot) {
-  const ah = a.size * BOX_RATIO
-  const bh = b.size * BOX_RATIO
-  const width = Math.max(0, Math.min(a.x + a.size, b.x + b.size) - Math.max(a.x, b.x))
-  const height = Math.max(0, Math.min(a.y + ah, b.y + bh) - Math.max(a.y, b.y))
-  return (width * height) / Math.min(a.size * ah, b.size * bh)
-}
-
-/* ------------------------------------------------------------------ */
 /* Image kind                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -585,10 +528,6 @@ export function stickerKind(imageUrl: string | null | undefined): StickerKind {
   if (imageUrl.startsWith('/api/images/d-')) return 'die'
   if (imageUrl.startsWith('/api/images/c-')) return 'cutout'
   return 'photo'
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
 }
 
 function round(value: number, digits: number) {

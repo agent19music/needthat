@@ -94,7 +94,7 @@ describe('tag colour', () => {
       ['fits', 'blue'],
       ['desk', 'green'],
       ['football', 'red'],
-      ['gifts', 'blue'],
+      ['gifts', 'white'],
     ])
   })
 
@@ -106,7 +106,11 @@ describe('tag colour', () => {
       createdAt: 10,
     })
     expect(saved).toEqual({ ok: true, color: 'green' })
-    await account.writeAccountCategory({ id: 'fits', name: 'outfits', createdAt: 10 })
+    await account.writeAccountCategory({
+      id: 'fits',
+      name: 'outfits',
+      createdAt: 10,
+    })
     expect((await wishlist()).categories[0]).toMatchObject({
       name: 'outfits',
       color: 'green',
@@ -133,8 +137,13 @@ describe('prices from links', () => {
         price: { amount: 10000, currency: 'USD' },
       }),
     )
-    expect((await wishlist()).items[0].price).toEqual({ amount: 10000, currency: 'USD' })
-    const offer = state.sqlite!.prepare('select source_name, provider from offers').get()
+    expect((await wishlist()).items[0].price).toEqual({
+      amount: 10000,
+      currency: 'USD',
+    })
+    const offer = state
+      .sqlite!.prepare('select source_name, provider from offers')
+      .get()
     expect(offer).toEqual({ source_name: 'adidas.com', provider: 'link' })
   })
 
@@ -142,8 +151,13 @@ describe('prices from links', () => {
     const item = input('a', { price: { amount: 10000, currency: 'USD' } })
     await account.writeAccountItem(item)
     await account.writeAccountItem({ ...item })
-    await account.writeAccountItem({ ...item, price: { amount: 9000, currency: 'USD' } })
-    const count = state.sqlite!.prepare('select count(*) as n from offers').get() as { n: number }
+    await account.writeAccountItem({
+      ...item,
+      price: { amount: 9000, currency: 'USD' },
+    })
+    const count = state
+      .sqlite!.prepare('select count(*) as n from offers')
+      .get() as { n: number }
     expect(count.n).toBe(1)
     expect((await wishlist()).items[0].price?.amount).toBe(9000)
   })
@@ -156,9 +170,11 @@ describe('prices from links', () => {
 
 describe('die images', () => {
   it('accepts d- keys and records a die image row', async () => {
-    await account.writeAccountItem(input('a', { imageUrl: '/api/images/d-a-12345' }))
+    await account.writeAccountItem(
+      input('a', { imageUrl: '/api/images/d-a-12345' }),
+    )
     expect((await wishlist()).items[0].imageUrl).toBe('/api/images/d-a-12345')
-    const rows = state.sqlite!.prepare("select r2_key, role from images").all()
+    const rows = state.sqlite!.prepare('select r2_key, role from images').all()
     expect(rows).toEqual([{ r2_key: 'd-a-12345', role: 'die' }])
   })
 
@@ -167,7 +183,9 @@ describe('die images', () => {
     await account.writeAccountItem(item)
     await account.writeAccountItem({ ...item, imageUrl: '/api/images/d-a-2' })
     await account.writeAccountItem(input('b', { imageUrl: '/api/images/o-b' }))
-    const rows = state.sqlite!.prepare('select item_id, r2_key from images').all()
+    const rows = state
+      .sqlite!.prepare('select item_id, r2_key from images')
+      .all()
     expect(rows).toEqual([{ item_id: 'a', r2_key: 'd-a-2' }])
   })
 
@@ -183,34 +201,54 @@ describe('share toggles', () => {
       ok: true,
       showPrices: true,
       allowClaims: true,
+      sharing: true,
     })
     expect(await account.writeShareSettings({ showPrices: false })).toEqual({
       ok: true,
       showPrices: false,
       allowClaims: true,
+      sharing: true,
     })
-    expect(await account.readShareSettings()).toMatchObject({ showPrices: false })
+    expect(await account.readShareSettings()).toMatchObject({
+      showPrices: false,
+    })
   })
 
   it('needs a session', async () => {
     as(null)
-    expect((await account.writeShareSettings({ showPrices: false })).ok).toBe(false)
+    expect((await account.writeShareSettings({ showPrices: false })).ok).toBe(
+      false,
+    )
   })
 })
 
 describe('public sheet', () => {
   beforeEach(async () => {
-    await account.writeAccountCategory({ id: 'fits', name: 'fits', createdAt: 10 })
+    await account.writeAccountCategory({
+      id: 'fits',
+      name: 'fits',
+      createdAt: 10,
+    })
     await account.writeAccountItem(
-      input('want', { categoryId: 'fits', price: { amount: 8500, currency: 'USD' } }),
+      input('want', {
+        categoryId: 'fits',
+        price: { amount: 8500, currency: 'USD' },
+      }),
     )
-    await account.writeAccountItem(input('got', { categoryId: 'fits', status: 'purchased' }))
+    await account.writeAccountItem(
+      input('got', { categoryId: 'fits', status: 'purchased' }),
+    )
   })
 
   it('shows tags with colours, wanted and got stickers, and prices', async () => {
     const sheet = await publicSheet.loadPublicWishlist('sean')
     expect(sheet?.categories).toEqual([
-      { id: 'fits', name: 'fits', color: 'blue', createdAt: expect.any(Number) },
+      {
+        id: 'fits',
+        name: 'fits',
+        color: 'blue',
+        createdAt: expect.any(Number),
+      },
     ])
     const byId = new Map(sheet!.items.map((item) => [item.id, item]))
     expect(byId.get('want')).toMatchObject({
@@ -232,6 +270,21 @@ describe('public sheet', () => {
     expect(after?.imageVersion).not.toBe(before?.imageVersion)
   })
 
+  it('Stop sharing shows nothing shared and blocks claims; sharing again restores it', async () => {
+    await account.writeShareSettings({ sharing: false })
+    const stopped = await publicSheet.loadPublicWishlist('sean')
+    expect(stopped).not.toBeNull()
+    expect(stopped?.items).toEqual([])
+    expect(stopped?.categories).toEqual([])
+    expect(
+      (await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')).ok,
+    ).toBe(false)
+    await account.writeShareSettings({ sharing: true })
+    expect((await publicSheet.loadPublicWishlist('sean'))?.items).toHaveLength(
+      2,
+    )
+  })
+
   it('returns null for unknown people', async () => {
     expect(await publicSheet.loadPublicWishlist('nobody')).toBeNull()
   })
@@ -244,11 +297,19 @@ describe('claims', () => {
   })
 
   it('a friend claims; others see it taken but not by them', async () => {
-    expect(await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')).toEqual({ ok: true })
+    expect(
+      await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want'),
+    ).toEqual({ ok: true })
     const mine = await publicSheet.loadPublicWishlist('sean', { id: 'friend' })
-    expect(mine?.items.find((i) => i.id === 'want')).toMatchObject({ claimed: true, claimedByMe: true })
+    expect(mine?.items.find((i) => i.id === 'want')).toMatchObject({
+      claimed: true,
+      claimedByMe: true,
+    })
     const theirs = await publicSheet.loadPublicWishlist('sean', { id: 'other' })
-    expect(theirs?.items.find((i) => i.id === 'want')).toMatchObject({ claimed: true, claimedByMe: false })
+    expect(theirs?.items.find((i) => i.id === 'want')).toMatchObject({
+      claimed: true,
+      claimedByMe: false,
+    })
   })
 
   it('the owner never sees claims (Q3 default)', async () => {
@@ -259,20 +320,35 @@ describe('claims', () => {
 
   it('one claim per item; claiming twice is fine for the same person', async () => {
     await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
-    expect(await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')).toEqual({ ok: true })
-    expect(await publicSheet.claimPublicItem({ id: 'other' }, 'sean', 'want')).toEqual({
+    expect(
+      await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want'),
+    ).toEqual({ ok: true })
+    expect(
+      await publicSheet.claimPublicItem({ id: 'other' }, 'sean', 'want'),
+    ).toEqual({
       ok: false,
       message: 'Someone already claimed this.',
     })
   })
 
   it('refuses signed-out, owners, got items, other lists and claims-off sheets', async () => {
-    expect((await publicSheet.claimPublicItem(null, 'sean', 'want')).ok).toBe(false)
-    expect((await publicSheet.claimPublicItem({ id: 'owner' }, 'sean', 'want')).ok).toBe(false)
-    expect((await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'got')).ok).toBe(false)
-    expect((await publicSheet.claimPublicItem({ id: 'friend' }, 'wanjiru', 'want')).ok).toBe(false)
+    expect((await publicSheet.claimPublicItem(null, 'sean', 'want')).ok).toBe(
+      false,
+    )
+    expect(
+      (await publicSheet.claimPublicItem({ id: 'owner' }, 'sean', 'want')).ok,
+    ).toBe(false)
+    expect(
+      (await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'got')).ok,
+    ).toBe(false)
+    expect(
+      (await publicSheet.claimPublicItem({ id: 'friend' }, 'wanjiru', 'want'))
+        .ok,
+    ).toBe(false)
     await account.writeShareSettings({ allowClaims: false })
-    expect(await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')).toEqual({
+    expect(
+      await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want'),
+    ).toEqual({
       ok: false,
       message: 'Claims are off for this sheet.',
     })
@@ -289,11 +365,15 @@ describe('claims', () => {
     await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
     await publicSheet.releasePublicClaim({ id: 'other' }, 'want')
     expect(
-      (await publicSheet.loadPublicWishlist('sean', { id: 'other' }))?.items.find((i) => i.id === 'want')?.claimed,
+      (
+        await publicSheet.loadPublicWishlist('sean', { id: 'other' })
+      )?.items.find((i) => i.id === 'want')?.claimed,
     ).toBe(true)
     await publicSheet.releasePublicClaim({ id: 'friend' }, 'want')
     expect(
-      (await publicSheet.loadPublicWishlist('sean', { id: 'other' }))?.items.find((i) => i.id === 'want')?.claimed,
+      (
+        await publicSheet.loadPublicWishlist('sean', { id: 'other' })
+      )?.items.find((i) => i.id === 'want')?.claimed,
     ).toBe(false)
   })
 })

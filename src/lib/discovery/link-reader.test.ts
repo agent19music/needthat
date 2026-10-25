@@ -32,9 +32,18 @@ describe('displayLink', () => {
 describe('parsePrice', () => {
   it('reads numbers and strings in minor units', () => {
     expect(parsePrice(100, 'usd')).toEqual({ amount: 10000, currency: 'USD' })
-    expect(parsePrice('1,299.00', 'USD')).toEqual({ amount: 129900, currency: 'USD' })
-    expect(parsePrice('1.299,50', 'EUR')).toEqual({ amount: 129950, currency: 'EUR' })
-    expect(parsePrice('KSh 12,500', 'KES')).toEqual({ amount: 1250000, currency: 'KES' })
+    expect(parsePrice('1,299.00', 'USD')).toEqual({
+      amount: 129900,
+      currency: 'USD',
+    })
+    expect(parsePrice('1.299,50', 'EUR')).toEqual({
+      amount: 129950,
+      currency: 'EUR',
+    })
+    expect(parsePrice('KSh 12,500', 'KES')).toEqual({
+      amount: 1250000,
+      currency: 'KES',
+    })
   })
   it('needs a currency code and a real amount', () => {
     expect(parsePrice(100, '$')).toBeNull()
@@ -79,7 +88,10 @@ describe('parseProductPage', () => {
 
   it('reads variant offers and price specifications', () => {
     const html = `<script type='application/ld+json'>[{"@type":["Product"],"name":"Tee","hasVariant":[{"offers":{"priceSpecification":{"price":25,"priceCurrency":"GBP"}}}]}]</script>`
-    expect(parseProductPage(html, url).price).toEqual({ amount: 2500, currency: 'GBP' })
+    expect(parseProductPage(html, url).price).toEqual({
+      amount: 2500,
+      currency: 'GBP',
+    })
   })
 
   it('uses <title> when there is nothing else and survives bad JSON', () => {
@@ -93,8 +105,23 @@ describe('parseProductPage', () => {
     })
   })
 
+  it('keeps one size per photo, the largest, preferring https', () => {
+    const shot = 'https://shop.example/cdn/files/run.png?v=17'
+    const html = `<script type="application/ld+json">{"@type":"Product","name":"Runner","image":["${shot}&width=100","${shot}&width=900","https://shop.example/cdn/files/side.png?v=17&width=300"]}</script>
+      <meta property="og:image" content="${shot.replace('https:', 'http:')}">
+      <meta property="og:image:secure_url" content="${shot}">`
+    expect(parseProductPage(html, url).images).toEqual([
+      shot,
+      'https://shop.example/cdn/files/side.png?v=17&width=300',
+    ])
+  })
+
   it('drops non-http images and caps the list', () => {
-    const many = Array.from({ length: 9 }, (_, i) => `<meta property="og:image" content="https://x.example/${i}.jpg">`).join('')
+    const many = Array.from(
+      { length: 9 },
+      (_, i) =>
+        `<meta property="og:image" content="https://x.example/${i}.jpg">`,
+    ).join('')
     const html = `<meta property="og:image" content="data:image/png;base64,AAA">${many}`
     const images = parseProductPage(html, url).images
     expect(images).toHaveLength(6)

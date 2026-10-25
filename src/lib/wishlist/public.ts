@@ -8,7 +8,10 @@ const username = z
   .max(30)
   .regex(/^[a-z0-9_]+$/)
 
-const itemId = z.string().trim().regex(/^[A-Za-z0-9-]{1,80}$/)
+const itemId = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9-]{1,80}$/)
 
 async function viewer() {
   const { readSession } = await import('#/lib/session.server')

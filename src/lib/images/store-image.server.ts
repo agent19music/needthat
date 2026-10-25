@@ -75,11 +75,17 @@ const DIE_KEY_ITEM = /^[A-Za-z0-9-]{1,80}$/
 export async function saveDieImage(itemId: string, imageBase64: string) {
   return Sentry.startSpan({ name: 'Storing a die-cut sticker' }, async () => {
     if (!DIE_KEY_ITEM.test(itemId)) {
-      return { ok: false as const, message: 'That sticker could not be stored.' }
+      return {
+        ok: false as const,
+        message: 'That sticker could not be stored.',
+      }
     }
     const decoded = decodeImageBase64(imageBase64, MAX_BYTES)
     if (!decoded || decoded.contentType !== 'image/png') {
-      return { ok: false as const, message: 'That sticker could not be stored.' }
+      return {
+        ok: false as const,
+        message: 'That sticker could not be stored.',
+      }
     }
     const nonce = crypto.randomUUID().replace(/-/g, '').slice(0, 10)
     const key = `d-${itemId}-${nonce}`

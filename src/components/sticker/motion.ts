@@ -23,7 +23,14 @@ export const MOTION = {
   /** 390: the Got page rises from the bottom while the sticker flies. */
   pageRise: { duration: 0.3 },
   slap: { scale: [1.1, 0.98, 1], duration: 0.14 },
-  burst: { delay: 0.06, scale: [0, 1.08, 1], rotate: -10, duration: 0.2, hold: 1.2, fade: 0.18 },
+  burst: {
+    delay: 0.06,
+    scale: [0, 1.08, 1],
+    rotate: -10,
+    duration: 0.2,
+    hold: 1.2,
+    fade: 0.18,
+  },
   label: { delay: 0.12, duration: 0.14 },
   print: { scale: [1.1, 1], duration: 0.14, star: 0.2 },
   claimed: { rotate: -7 },
@@ -108,7 +115,13 @@ export function burstAnimation(reduced: boolean) {
     transition: {
       delay,
       duration: total,
-      times: [0, (duration * 0.6) / total, duration / total, (duration + hold) / total, 1],
+      times: [
+        0,
+        (duration * 0.6) / total,
+        duration / total,
+        (duration + hold) / total,
+        1,
+      ],
       ease: EASE.standard,
     },
   }
@@ -117,6 +130,8 @@ export function burstAnimation(reduced: boolean) {
 export function burstTotalMs(reduced: boolean) {
   const { delay, duration, hold, fade } = MOTION.burst
   return Math.round(
-    (reduced ? MOTION.reduced.duration * 2 + hold : delay + duration + hold + fade) * 1000,
+    (reduced
+      ? MOTION.reduced.duration * 2 + hold
+      : delay + duration + hold + fade) * 1000,
   )
 }

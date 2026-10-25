@@ -51,7 +51,9 @@ describe('PublicBoard (S7 claim view)', () => {
     renderWithRouter(() => (
       <PublicBoard profile={profile} sheetId={null} signedIn={false} />
     ))
-    expect(await screen.findByText("Sean's wishlist")).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Sean Motanya' }),
+    ).toBeInTheDocument()
     expect(screen.getByText('CLAIMED')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Raglan sweatshirt/ }))
     expect(
@@ -83,6 +85,7 @@ describe('PublicBoard (S7 claim view)', () => {
     expect(
       await screen.findByText("Claimed. Only you can see it's you"),
     ).toBeInTheDocument()
-    expect(screen.getAllByText('CLAIMED')).toHaveLength(2)
+    expect(screen.getByText('CLAIMED')).toBeInTheDocument()
+    expect(screen.getByText('Claimed by you')).toBeInTheDocument()
   })
 })

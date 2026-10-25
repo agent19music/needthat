@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { CheckCircleIcon, LockSimpleIcon } from '@phosphor-icons/react'
+import {
+  CheckCircleIcon,
+  HandHeartIcon,
+  LockSimpleIcon,
+} from '@phosphor-icons/react'
 
 import { stickerKind } from '#/lib/sticker/sheets'
 import type { DotFill, StickerKind } from '#/lib/sticker/sheets'
@@ -89,7 +93,11 @@ export function StickerArt({
   )
 }
 
-/** Ghost slot: the die silhouette left behind once a sticker is peeled. */
+/**
+ * Ghost slot (r2 #13): the die silhouette filled rgba(29,29,31,.14) with a
+ * 1.5px white die line at 55%. Die and cut-out images get the shape from
+ * the #nt-ghost filter; photo stickers keep their rounded frame.
+ */
 export function Ghost({ item, rotate }: { item: ArtItem; rotate: number }) {
   const src = useItemSrc(item)
   const kind = artKind(item, src)
@@ -99,15 +107,54 @@ export function Ghost({ item, rotate }: { item: ArtItem; rotate: number }) {
       className="nt-ghost"
       data-shape={shaped ? 'die' : 'rect'}
       aria-hidden="true"
-      style={
-        {
-          '--r': `${rotate}deg`,
-          '--m': shaped ? `url("${src}")` : undefined,
-        } as CSSProperties
-      }
+      style={{ '--r': `${rotate}deg` } as CSSProperties}
     >
-      <i />
-      <i />
+      {shaped ? (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          referrerPolicy="no-referrer"
+          decoding="async"
+        />
+      ) : (
+        <i />
+      )}
+    </span>
+  )
+}
+
+/**
+ * Faded mini (r2 §3): the cutout's silhouette at .14 ink, no colour. Uses
+ * the #nt-sil filter so no separate silhouette PNG is needed.
+ */
+export function Silhouette({
+  item,
+  className,
+}: {
+  item: ArtItem
+  className?: string
+}) {
+  const src = useItemSrc(item)
+  const kind = artKind(item, src)
+  const shaped = (kind === 'die' || kind === 'cutout') && src
+  return (
+    <span
+      className={['nt-sil', className].filter(Boolean).join(' ')}
+      data-shape={shaped ? 'die' : 'rect'}
+      aria-hidden="true"
+    >
+      {shaped ? (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          referrerPolicy="no-referrer"
+          decoding="async"
+        />
+      ) : (
+        <i />
+      )}
     </span>
   )
 }
@@ -221,11 +268,26 @@ export function GotLabel({
   )
 }
 
-export function ClaimedTag({ style }: { style?: CSSProperties }) {
+export function ClaimedTag({
+  style,
+  mine = false,
+}: {
+  style?: CSSProperties
+  /** B3·04: the visitor's own claim is an ink pill with hand-heart. */
+  mine?: boolean
+}) {
   return (
-    <span className="nt-claimed" style={style}>
-      <LockSimpleIcon weight="bold" aria-hidden="true" />
-      CLAIMED
+    <span
+      className="nt-claimed"
+      data-mine={mine ? 'true' : undefined}
+      style={style}
+    >
+      {mine ? (
+        <HandHeartIcon weight="fill" aria-hidden="true" />
+      ) : (
+        <LockSimpleIcon weight="bold" aria-hidden="true" />
+      )}
+      {mine ? 'Claimed by you' : 'CLAIMED'}
     </span>
   )
 }
@@ -269,6 +331,35 @@ export function KissCutFilters() {
             </feMerge>
           </filter>
         ))}
+        {/* r2 #13 ghost: alpha → .14 ink fill + 1.5px white die line at 55%. */}
+        <filter id="nt-ghost" x="-5%" y="-5%" width="110%" height="110%">
+          <feComponentTransfer in="SourceAlpha" result="shape">
+            <feFuncA type="discrete" tableValues="0 1 1 1" />
+          </feComponentTransfer>
+          <feMorphology
+            in="shape"
+            operator="erode"
+            radius="1.5"
+            result="inner"
+          />
+          <feComposite in="shape" in2="inner" operator="out" result="ring" />
+          <feFlood floodColor="#1D1D1F" floodOpacity="0.14" />
+          <feComposite in2="inner" operator="in" result="fill" />
+          <feFlood floodColor="#fff" floodOpacity="0.55" />
+          <feComposite in2="ring" operator="in" result="line" />
+          <feMerge>
+            <feMergeNode in="fill" />
+            <feMergeNode in="line" />
+          </feMerge>
+        </filter>
+        {/* r2 §3 faded mini: silhouette only. */}
+        <filter id="nt-sil" x="0" y="0" width="100%" height="100%">
+          <feComponentTransfer in="SourceAlpha" result="shape">
+            <feFuncA type="discrete" tableValues="0 1 1 1" />
+          </feComponentTransfer>
+          <feFlood floodColor="#1D1D1F" floodOpacity="0.14" />
+          <feComposite in2="shape" operator="in" />
+        </filter>
       </defs>
     </svg>
   )

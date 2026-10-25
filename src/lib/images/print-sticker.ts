@@ -12,9 +12,15 @@ export type PrintedSticker =
   | { kind: 'photo'; url: string; reason: 'no-backdrop' | GateFailure }
 
 /** Copies a remote image under a per-attempt key so "Try another" never hits a cached URL. */
-export async function copyForPrint(itemId: string, imageUrl: string, attempt = 0) {
+export async function copyForPrint(
+  itemId: string,
+  imageUrl: string,
+  attempt = 0,
+) {
   const key = attempt === 0 ? itemId : `${itemId}-t${attempt}`
-  const copied = await ingestProductImage({ data: { itemId: key, url: imageUrl } })
+  const copied = await ingestProductImage({
+    data: { itemId: key, url: imageUrl },
+  })
   return copied.ok ? copied.url : null
 }
 
@@ -52,7 +58,11 @@ export async function cutForPrint(
 }
 
 /** Copy + cut in one go; null when the image could not be copied at all. */
-export async function printFromLink(itemId: string, imageUrl: string, attempt = 0) {
+export async function printFromLink(
+  itemId: string,
+  imageUrl: string,
+  attempt = 0,
+) {
   const copied = await copyForPrint(itemId, imageUrl, attempt)
   if (!copied) return null
   return cutForPrint(itemId, { url: copied })

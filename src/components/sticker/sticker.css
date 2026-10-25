@@ -3,12 +3,13 @@
 
 .nt-root,
 .nt-layer {
-  --nt-liner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='90'%3E%3Cg transform='rotate(-18 90 45)' font-family='Arial, Helvetica, sans-serif' font-weight='700' font-size='14' fill='%23ECECEE'%3E%3Ctext x='-10' y='40'%3E%23needthat%3C/text%3E%3Ctext x='80' y='85'%3E%23needthat%3C/text%3E%3C/g%3E%3C/svg%3E");
+  --nt-liner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='90'%3E%3Cg transform='rotate(-18 90 45)' font-family='Arial, Helvetica, sans-serif' font-weight='700' font-size='14' fill='%231D1D1F' fill-opacity='.04'%3E%3Ctext x='-10' y='40'%3E%23needthat%3C/text%3E%3Ctext x='80' y='85'%3E%23needthat%3C/text%3E%3C/g%3E%3C/svg%3E");
   --nt-dots: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18'%3E%3Ccircle cx='9' cy='9' r='1.3' fill='%231D1D1F' fill-opacity='.14'/%3E%3C/svg%3E");
 }
 
 .nt-root {
   position: relative;
+  display: flow-root; /* keep the top bar's margin inside the paper */
   min-height: 100dvh;
   background: var(--nt-paper);
   color: var(--nt-ink);
@@ -22,8 +23,7 @@
   box-sizing: border-box;
 }
 
-.nt-root button,
-.nt-layer button {
+:where(.nt-root, .nt-layer) button {
   font: inherit;
   color: inherit;
   margin: 0;
@@ -33,8 +33,7 @@
   cursor: pointer;
 }
 
-.nt-root :focus-visible,
-.nt-layer :focus-visible {
+:where(.nt-root, .nt-layer) :focus-visible {
   outline: none;
   box-shadow: var(--nt-focus);
 }
@@ -136,6 +135,11 @@ html[data-board='sticker'] .site-footer {
   box-shadow: var(--nt-sh-hairline);
 }
 
+.nt-pill[data-tone='yellow'] {
+  background: var(--nt-yellow);
+  color: var(--nt-ink);
+}
+
 .nt-pill[data-tone='paper'] {
   background: var(--nt-paper-2);
   color: var(--nt-ink);
@@ -207,12 +211,31 @@ html[data-board='sticker'] .site-footer {
   pointer-events: none;
 }
 
-.nt-dot[data-fill='yellow'] { background: var(--nt-dot-yellow); color: var(--nt-dot-yellow-fg); }
-.nt-dot[data-fill='red'] { background: var(--nt-dot-red); color: var(--nt-dot-red-fg); }
-.nt-dot[data-fill='blue'] { background: var(--nt-dot-blue); color: var(--nt-dot-blue-fg); }
-.nt-dot[data-fill='green'] { background: var(--nt-dot-green); color: var(--nt-dot-green-fg); }
-.nt-dot[data-fill='ink'] { background: var(--nt-dot-ink); color: var(--nt-dot-ink-fg); }
-.nt-dot[data-fill='white'] { background: #fff; color: var(--nt-ink); border-color: var(--nt-ink); }
+.nt-dot[data-fill='yellow'] {
+  background: var(--nt-dot-yellow);
+  color: var(--nt-dot-yellow-fg);
+}
+.nt-dot[data-fill='red'] {
+  background: var(--nt-dot-red);
+  color: var(--nt-dot-red-fg);
+}
+.nt-dot[data-fill='blue'] {
+  background: var(--nt-dot-blue);
+  color: var(--nt-dot-blue-fg);
+}
+.nt-dot[data-fill='green'] {
+  background: var(--nt-dot-green);
+  color: var(--nt-dot-green-fg);
+}
+.nt-dot[data-fill='ink'] {
+  background: var(--nt-dot-ink);
+  color: var(--nt-dot-ink-fg);
+}
+.nt-dot[data-fill='white'] {
+  background: #fff;
+  color: var(--nt-ink);
+  border-color: var(--nt-ink);
+}
 
 .nt-star {
   position: absolute;
@@ -282,6 +305,17 @@ html[data-board='sticker'] .site-footer {
   font-size: 12px;
 }
 
+/* B3·04: the visitor's own claim, ink pill 26h. */
+.nt-claimed[data-mine='true'] {
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 999px;
+  letter-spacing: 0;
+  font: 700 11px/1 var(--nt-font-num);
+  box-shadow: var(--nt-sh-edge);
+}
+
 /* ---------------- Sheet ---------------- */
 
 .nt-sheet {
@@ -295,9 +329,28 @@ html[data-board='sticker'] .site-footer {
   color: var(--fg);
 }
 
-.nt-sheet[data-fill='green'] { --bg: var(--nt-sheet-green-bg); --fg: var(--nt-sheet-green-fg); }
-.nt-sheet[data-fill='red'] { --bg: var(--nt-sheet-red-bg); --fg: var(--nt-sheet-red-fg); }
-.nt-sheet[data-fill='yellow'] { --bg: var(--nt-sheet-yellow-bg); --fg: var(--nt-sheet-yellow-fg); }
+.nt-sheet[data-fill='green'] {
+  --bg: var(--nt-sheet-green-bg);
+  --fg: var(--nt-sheet-green-fg);
+}
+.nt-sheet[data-fill='red'] {
+  --bg: var(--nt-sheet-red-bg);
+  --fg: var(--nt-sheet-red-fg);
+}
+.nt-sheet[data-fill='yellow'] {
+  --bg: var(--nt-sheet-yellow-bg);
+  --fg: var(--nt-sheet-yellow-fg);
+}
+.nt-sheet[data-fill='white'] {
+  --bg: #fff;
+  --fg: var(--nt-ink);
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+}
+.nt-sheet[data-fill='paper'] {
+  --bg: var(--nt-paper-2);
+  --fg: var(--nt-ink);
+  box-shadow: var(--nt-sh-hairline);
+}
 .nt-sheet[data-fill='blank'] {
   --bg: #fff;
   --fg: var(--nt-ink);
@@ -305,19 +358,25 @@ html[data-board='sticker'] .site-footer {
 }
 
 .nt-sheet[data-highlight='true'] {
-  box-shadow: 0 0 0 3px var(--nt-paper-2), 0 0 0 6px var(--nt-ink);
+  box-shadow:
+    0 0 0 3px var(--nt-paper-2),
+    0 0 0 6px var(--nt-ink);
 }
 
 .nt-sheet-head {
   position: absolute;
-  left: 24px;
+  left: 22px;
   top: 20px;
+  max-width: 150px;
   z-index: 4;
   pointer-events: none;
 }
 
 .nt-sheet-head h3 {
-  margin: 7px 0 0;
+  margin: 8px 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--nt-font-display);
   font-weight: 400;
   font-size: var(--nt-fs-sheet-title);
@@ -327,7 +386,7 @@ html[data-board='sticker'] .site-footer {
 }
 
 .nt-sheet-head p {
-  margin: 7px 0 0;
+  margin: 8px 0 0;
   font: 600 13px/1 var(--nt-font-num);
   font-variant-numeric: tabular-nums;
 }
@@ -336,14 +395,14 @@ html[data-board='sticker'] .site-footer {
   color: var(--nt-text-muted);
 }
 
+/* r2 #10: hand-pointing 16, gap 6; sits in the 40 reserve above the FAB. */
 .nt-sheet-hint {
   position: absolute;
-  right: 16px;
-  bottom: 14px;
+  left: 22px;
+  bottom: 96px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  bottom: 18px;
   color: var(--fg, var(--nt-ink));
   font: 600 12px/1 var(--nt-font-ui);
   pointer-events: none;
@@ -351,24 +410,48 @@ html[data-board='sticker'] .site-footer {
 }
 
 .nt-sheet-hint svg {
-  font-size: 15px;
+  font-size: 16px;
 }
 
+/* r2 §5 "+N more" sticker: ⌀56, white, 3px ink, rotate 8. */
 .nt-more {
   position: absolute;
-  display: grid;
-  place-items: center;
-  width: calc(var(--d) * 100cqw);
-  height: calc(var(--d) * 100cqw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   min-width: 44px;
   min-height: 44px;
-  border: 2px solid var(--nt-ink) !important;
+  border: 3px solid var(--nt-ink) !important;
   border-radius: 999px;
   background: #fff !important;
   color: var(--nt-ink);
-  font: 700 14px/1 var(--nt-font-num) !important;
+  transform: rotate(8deg);
   box-shadow: var(--nt-sh-edge);
   z-index: 9;
+}
+
+.nt-more b {
+  font: 700 18px/1 var(--nt-font-num);
+  letter-spacing: -0.02em;
+}
+
+.nt-more span {
+  margin-top: 1px;
+  font: 600 10px/1 var(--nt-font-ui);
+}
+
+/* Got meta pill, inline under the meta (r2 #16/#23). */
+.nt-year {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  margin-top: 8px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--nt-ink);
+  font: 700 11px/1 var(--nt-font-num);
 }
 
 .nt-cnt {
@@ -393,13 +476,9 @@ html[data-board='sticker'] .site-footer {
 
 /* ---------------- Sticker slot ---------------- */
 
+/* r2: slots are placed by src/lib/sticker/layout.ts in design px → cqw. */
 .nt-slot {
   position: absolute;
-  left: calc(var(--x) * 100cqw);
-  top: calc(var(--y) * 100cqw);
-  width: calc(var(--s) * 100cqw);
-  height: calc(var(--s) * var(--h, 0.75) * 100cqw);
-  z-index: var(--z);
 }
 
 .nt-slot.nt-landing::before {
@@ -492,7 +571,7 @@ html[data-board='sticker'] .site-footer {
   filter: var(--nt-sh-die-lift);
 }
 
-/* Ghost slot: where a got sticker used to be. */
+/* Ghost slot (r2 #13): silhouette .14 ink + 1.5px white die line at 55%. */
 .nt-ghost {
   position: absolute;
   inset: 0;
@@ -500,56 +579,82 @@ html[data-board='sticker'] .site-footer {
   pointer-events: none;
 }
 
-.nt-ghost > i {
+.nt-ghost > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: url(#nt-ghost);
+}
+
+.nt-ghost[data-shape='rect'] > i,
+.nt-sil[data-shape='rect'] > i {
   position: absolute;
   inset: 0;
   display: block;
-  background: rgba(255, 255, 255, 0.55);
-  -webkit-mask: var(--m) center / contain no-repeat;
-  mask: var(--m) center / contain no-repeat;
-}
-
-.nt-ghost > i + i {
-  inset: 3px;
-  background: rgba(0, 0, 0, 0.14);
+  border-radius: var(--nt-r-photo-outer);
+  background: rgba(29, 29, 31, 0.14);
 }
 
 .nt-ghost[data-shape='rect'] > i {
-  -webkit-mask: none;
-  mask: none;
-  border-radius: var(--nt-r-photo-outer);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
 }
 
-.nt-ghost[data-shape='rect'] > i + i {
-  border-radius: 15px;
+.nt-sil {
+  position: absolute;
+  inset: 4px;
+  pointer-events: none;
+}
+
+.nt-sil > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: url(#nt-sil);
+}
+
+/* r2 #6/#8: lane-wide caption, title + sub one line each, sub at 100%. */
+.nt-cap-wrap {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
 }
 
 .nt-cap {
   position: absolute;
-  left: 0;
-  top: calc(100% + 10px);
+  display: block;
   width: 100%;
-  min-width: 120px;
   font: 600 12px/1.25 var(--nt-font-ui);
   text-align: left;
   pointer-events: none;
   z-index: 3;
+}
+
+.nt-cap-wrap > .nt-cap {
+  position: relative;
+}
+
+.nt-cap b,
+.nt-cap span {
+  display: block;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nt-cap b {
+  font-weight: 600;
 }
 
 .nt-cap span {
-  display: block;
-  font: 500 11px/1.3 var(--nt-font-ui);
-  opacity: 0.82;
+  font: 500 var(--nt-fs-caption-sub, 11px) / 1.3 var(--nt-font-ui);
+  opacity: 1;
 }
 
 .nt-burst .nt-star b {
   font-size: 15px;
 }
-
 
 .nt-old {
   filter: saturate(0.2);
@@ -647,18 +752,20 @@ html[data-board='sticker'] .site-footer {
   padding-top: 60px;
 }
 
+/* r2 B1·06: cover in flow — avatar, name, @handle (gap 8, #16), inline
+   stats (12/600 labels, 4px after the number, #9), Share (ink) + Edit. */
 .nt-cover {
   position: relative;
-  height: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 28px 28px 30px;
   border-radius: var(--nt-r-cover);
   background: var(--nt-yellow);
   color: var(--nt-ink);
 }
 
 .nt-cover .nt-av {
-  position: absolute;
-  left: 24px;
-  top: 24px;
   width: 104px;
   height: 104px;
   font-size: 34px;
@@ -666,11 +773,7 @@ html[data-board='sticker'] .site-footer {
 }
 
 .nt-cover h1 {
-  position: absolute;
-  left: 24px;
-  right: 24px;
-  top: 150px;
-  margin: 0;
+  margin: 22px 0 0;
   font-family: var(--nt-font-display);
   font-weight: 400;
   font-size: var(--nt-fs-profile-name);
@@ -680,39 +783,43 @@ html[data-board='sticker'] .site-footer {
 }
 
 .nt-cover .nt-handle {
-  position: absolute;
-  left: 24px;
-  top: 240px;
+  margin-top: 8px;
   font: 600 15px/1 var(--nt-font-ui);
 }
 
+.nt-cover-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.nt-cover-stats > span,
+.nt-cover-stats > button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--nt-ink);
+}
+
+.nt-cover-stats b {
+  font: 700 24px/1 var(--nt-font-num);
+}
+
+.nt-cover-stats small {
+  font: 600 12px/1 var(--nt-font-ui);
+}
+
+.nt-cover-stats .nt-cover-total {
+  font-size: 24px;
+}
+
 .nt-cover .nt-actions {
-  position: absolute;
-  left: 24px;
-  right: 24px;
-  top: 276px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: 26px;
 }
-
-.nt-cover .nt-stat-want {
-  left: 196px;
-  top: 30px;
-  width: 84px;
-  height: 84px;
-  transform: rotate(-10deg);
-}
-
-.nt-cover .nt-stat-got {
-  left: 262px;
-  top: 92px;
-  width: 66px;
-  height: 66px;
-  transform: rotate(12deg);
-}
-
-.nt-cover .nt-stat-got b { font-size: 24px; }
 
 .nt-stat {
   flex-direction: column;
@@ -728,15 +835,13 @@ html[data-board='sticker'] .site-footer {
   font: 600 12px/1 var(--nt-font-num);
 }
 
-.nt-stat-got small { font-size: 11px; }
+.nt-stat-got small {
+  font-size: 11px;
+}
 
-button.nt-stat { cursor: pointer; pointer-events: auto; }
-
-.nt-cover .nt-total {
-  position: absolute;
-  left: 28px;
-  bottom: 28px;
-  font: 600 13px/1 var(--nt-font-num);
+button.nt-stat {
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .nt-labl {
@@ -859,9 +964,18 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   font: 700 12px/1 var(--nt-font-num);
 }
 
-.nt-tab[data-fill='green'] { --bg: var(--nt-sheet-green-bg); --fg: var(--nt-sheet-green-fg); }
-.nt-tab[data-fill='red'] { --bg: var(--nt-sheet-red-bg); --fg: var(--nt-sheet-red-fg); }
-.nt-tab[data-fill='yellow'] { --bg: var(--nt-yellow); --fg: var(--nt-ink); }
+.nt-tab[data-fill='green'] {
+  --bg: var(--nt-sheet-green-bg);
+  --fg: var(--nt-sheet-green-fg);
+}
+.nt-tab[data-fill='red'] {
+  --bg: var(--nt-sheet-red-bg);
+  --fg: var(--nt-sheet-red-fg);
+}
+.nt-tab[data-fill='yellow'] {
+  --bg: var(--nt-yellow);
+  --fg: var(--nt-ink);
+}
 .nt-tab[data-fill='blank'],
 .nt-tab[data-fill='all'] {
   --bg: transparent;
@@ -921,32 +1035,52 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   color: #fff;
 }
 
+/* r2 B1·06: the board is a white container with a hairline. */
 .nt-board {
   container-type: inline-size;
   padding: 28px;
-  border-top: 4px solid var(--nt-ink);
   border-radius: 0 28px 28px 28px;
-  background: var(--nt-paper-2);
+  background: #fff;
+  box-shadow: var(--nt-sh-hairline);
 }
 
 .nt-board-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 24px 16px;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Rows in 876 design px: wide 876, halves 430+16+430, Got 560 + tile 292. */
+.nt-row {
+  display: flex;
+  gap: calc(16 / 876 * 100cqw);
   align-items: flex-start;
 }
 
-.nt-board-grid > .nt-wide { width: 100%; }
-.nt-board-grid > .nt-half { width: calc((100% - 16px) / 2); }
-.nt-board-grid > .nt-gotsheet { width: calc(560 / 876 * 100%); }
-.nt-board-grid > .nt-blanksheet { width: calc(292 / 876 * 100%); }
+.nt-cell {
+  min-width: 0;
+}
+.nt-cell[data-kind='wide'],
+.nt-cell[data-kind='wall'],
+.nt-cell[data-kind='got-wide'] {
+  width: 100%;
+}
+.nt-cell[data-kind='half'] {
+  width: calc((100% - 16 / 876 * 100cqw) / 2);
+}
+.nt-cell[data-kind='got-row'] {
+  width: calc(560 / 876 * 100%);
+}
+.nt-cell[data-kind='tile'] {
+  width: calc(292 / 876 * 100%);
+}
+.nt-row[data-row='got-row tile'] {
+  gap: calc(24 / 876 * 100cqw);
+}
 
-.nt-wide .nt-sheet { aspect-ratio: 876 / 320; }
-.nt-half .nt-sheet { aspect-ratio: 430 / 452; }
-.nt-gotsheet .nt-sheet { aspect-ratio: 560 / 292; }
-.nt-blanksheet .nt-sheet { aspect-ratio: 1; }
-.nt-wide[data-expanded='true'] .nt-sheet,
-.nt-half[data-expanded='true'] .nt-sheet { aspect-ratio: auto; }
+.nt-blanksheet .nt-sheet {
+  aspect-ratio: 1;
+}
 
 .nt-under {
   display: flex;
@@ -965,57 +1099,97 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   text-decoration: none;
 }
 
-/* 768–1199: the cover collapses into a band above the board. */
+/* r3 B1·07, 768–1199: margins 32; a 128h profile band replaces the cover;
+   search is a 220w pill at ≥1024 and a 44 icon button below. */
+.nt-search-short {
+  display: none;
+}
+
 @media (max-width: 1199px) {
   .nt-top {
+    min-height: calc(28px + 48px);
     padding: 28px 32px 0;
+  }
+  .nt-top-right {
+    gap: 10px;
+  }
+  .nt-search {
+    width: 220px;
+    height: 44px;
+  }
+  .nt-search kbd,
+  .nt-search-long {
+    display: none;
+  }
+  .nt-search-short {
+    display: inline;
   }
   .nt-desk {
     grid-template-columns: minmax(0, 1fr);
     padding: 0 32px 40px;
   }
   .nt-cover-col {
-    padding-top: 28px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    gap: 20px;
-    align-items: stretch;
+    padding-top: 20px;
   }
   .nt-cover {
-    height: auto;
-    min-height: 170px;
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+    height: 128px;
+    padding: 0 24px;
+    border-radius: 28px;
   }
   .nt-cover .nt-av {
-    width: 84px;
-    height: 84px;
-    font-size: 28px;
+    width: 72px;
+    height: 72px;
+    font-size: 22px;
+  }
+  .nt-cover-id {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
   .nt-cover h1 {
-    left: 132px;
-    right: 180px;
-    top: 30px;
-    font-size: 30px;
+    margin: 0;
+    font-size: 28px;
   }
   .nt-cover .nt-handle {
-    left: 132px;
-    top: 74px;
+    margin-top: 8px;
+    font-size: 14px;
+  }
+  .nt-cover-stats {
+    gap: 16px;
+    margin: 0 0 0 12px;
   }
   .nt-cover .nt-actions {
-    left: 132px;
-    top: 104px;
+    flex-wrap: nowrap;
+    margin: 0 0 0 auto;
   }
-  .nt-cover .nt-total {
+  .nt-cover .nt-actions .nt-pill {
+    height: 46px;
+  }
+  .nt-tabrow {
+    height: 76px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .nt-search {
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+  }
+  .nt-search span {
     display: none;
-  }
-  .nt-labl {
-    margin-top: 0;
   }
 }
 
 /* ---------------- Mobile (<768) ---------------- */
 
 .nt-mobile {
-  padding-bottom: 120px;
+  /* r3: FAB height + 24, above the FAB's own 22 + safe-area offset, so the
+     last row scrolls clear of "Print a sticker". */
+  padding-bottom: calc(56px + 24px + 22px + env(safe-area-inset-bottom, 0px));
 }
 
 .nt-mt {
@@ -1116,10 +1290,18 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   transform: rotate(12deg);
 }
 
-.nt-pr-stats .nt-stat-want b { font-size: 19px; }
-.nt-pr-stats .nt-stat-got b { font-size: 17px; }
-.nt-pr-stats .nt-stat-want small { font-size: 9.5px; }
-.nt-pr-stats .nt-stat-got small { font-size: 9px; }
+.nt-pr-stats .nt-stat-want b {
+  font-size: 19px;
+}
+.nt-pr-stats .nt-stat-got b {
+  font-size: 17px;
+}
+.nt-pr-stats .nt-stat-want small {
+  font-size: 9.5px;
+}
+.nt-pr-stats .nt-stat-got small {
+  font-size: 9px;
+}
 
 .nt-mtabs {
   display: flex;
@@ -1177,7 +1359,9 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
 .nt-mtabs .nt-tab[aria-selected='true'][data-fill='blank']::before,
 .nt-mtabs .nt-tab[aria-selected='true'][data-fill='all']::before {
   background: #fff;
-  box-shadow: inset 0 0 0 1.5px var(--nt-line), 0 -1px 0 var(--nt-line);
+  box-shadow:
+    inset 0 0 0 1.5px var(--nt-line),
+    0 -1px 0 var(--nt-line);
 }
 
 .nt-mtabs .nt-tab b {
@@ -1194,11 +1378,6 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
 
 .nt-msheets .nt-sheet[data-active='true'] {
   border-top-left-radius: 0;
-}
-
-.nt-msheets .nt-sheet .nt-sheet-head {
-  left: 16px;
-  top: 18px;
 }
 
 .nt-peek {
@@ -1282,7 +1461,9 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   .nt-panel {
     left: auto;
     width: 480px;
-    box-shadow: -1px 0 0 var(--nt-line), -14px 0 34px rgba(0, 0, 0, 0.1);
+    box-shadow:
+      -1px 0 0 var(--nt-line),
+      -14px 0 34px rgba(0, 0, 0, 0.1);
   }
 }
 
@@ -1330,9 +1511,18 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   color: var(--fg);
 }
 
-.nt-item-top[data-fill='green'] { --bg: var(--nt-sheet-green-bg); --fg: var(--nt-sheet-green-fg); }
-.nt-item-top[data-fill='red'] { --bg: var(--nt-sheet-red-bg); --fg: var(--nt-sheet-red-fg); }
-.nt-item-top[data-fill='yellow'] { --bg: var(--nt-yellow); --fg: var(--nt-ink); }
+.nt-item-top[data-fill='green'] {
+  --bg: var(--nt-sheet-green-bg);
+  --fg: var(--nt-sheet-green-fg);
+}
+.nt-item-top[data-fill='red'] {
+  --bg: var(--nt-sheet-red-bg);
+  --fg: var(--nt-sheet-red-fg);
+}
+.nt-item-top[data-fill='yellow'] {
+  --bg: var(--nt-yellow);
+  --fg: var(--nt-ink);
+}
 
 .nt-item-nav {
   position: absolute;
@@ -1494,34 +1684,37 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   color: var(--nt-text-muted);
 }
 
-.nt-also-head button {
-  font: 600 13px/1 var(--nt-font-ui) !important;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--nt-ink);
-  min-height: 32px;
-}
-
 .nt-also-row {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 4px;
   margin-top: 12px;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
+.nt-also-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  min-height: 44px;
+  margin-left: auto;
+  font: 600 13px/1 var(--nt-font-ui) !important;
+  color: var(--nt-ink);
+}
+
+/* Bare mini stickers (90×40 in the handoff), padded to a 44px tap target. */
 .nt-mini {
   position: relative;
   flex: none;
-  width: 88px;
-  height: 72px;
-  border-radius: 16px;
-  background: var(--nt-paper-2) !important;
+  width: 90px;
+  height: 44px;
   container-type: inline-size;
 }
 
 .nt-mini .nt-art {
-  inset: 8px;
+  inset: 2px 8px 2px 0;
 }
 
 .nt-mini .nt-art[data-kind='photo'],
@@ -1576,7 +1769,8 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
 }
 
 .nt-cta:not([data-tone]):not(:disabled) {
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.16), 0 8px 18px rgba(217, 55, 43, 0.28);
+  /* r2 #17: no coloured glow. */
+  box-shadow: var(--nt-sh-raised);
 }
 
 .nt-cta[data-tone='yellow'] {
@@ -1649,7 +1843,8 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
 
 /* Print flow */
 .nt-print {
-  padding: 0 16px 140px;
+  /* r2 #30: CTA 62 + 16 + the dock's own 12/32 padding + safe area. */
+  padding: 0 16px calc(62px + 16px + 44px + env(safe-area-inset-bottom, 0px));
 }
 
 .nt-fld {
@@ -1657,7 +1852,7 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   align-items: center;
   gap: 10px;
   height: var(--nt-field-h);
-  margin-top: 24px;
+  margin-top: 30px;
   padding: 0 8px 0 16px;
   border-radius: var(--nt-r-field);
   background: #fff;
@@ -1678,6 +1873,16 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   color: var(--nt-ink);
   font: 600 15px/1 var(--nt-font-ui);
   outline: none;
+}
+
+/* The ring belongs on the pill, not on the bare input inside it. */
+.nt-fld input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.nt-fld:focus-within {
+  box-shadow: var(--nt-focus);
 }
 
 .nt-fld input::placeholder {
@@ -1779,8 +1984,12 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
 }
 
 @keyframes nt-pulse {
-  from { opacity: 0.5; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .nt-ptitle {
@@ -1880,8 +2089,14 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   white-space: nowrap;
 }
 
-.nt-tg[data-fill='green'] { --bg: var(--nt-sheet-green-bg); --fg: var(--nt-sheet-green-fg); }
-.nt-tg[data-fill='red'] { --bg: var(--nt-sheet-red-bg); --fg: var(--nt-sheet-red-fg); }
+.nt-tg[data-fill='green'] {
+  --bg: var(--nt-sheet-green-bg);
+  --fg: var(--nt-sheet-green-fg);
+}
+.nt-tg[data-fill='red'] {
+  --bg: var(--nt-sheet-red-bg);
+  --fg: var(--nt-sheet-red-fg);
+}
 .nt-tg[data-fill='outline'] {
   --bg: #fff;
   --fg: var(--nt-ink);
@@ -2004,6 +2219,10 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   padding: 12px 16px calc(32px + env(safe-area-inset-bottom, 0px));
 }
 
+.nt-dock > .nt-cta {
+  width: 100%;
+}
+
 @media (min-width: 768px) {
   .nt-dock {
     left: auto;
@@ -2011,51 +2230,222 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   }
 }
 
-/* Share */
+/* Share card (r2 §4 / B3·08): 300×380 base, zones scale with the card. */
 .nt-share-card {
-  width: 302px;
-  margin: 26px auto 0;
-  padding: 8px;
+  container-type: inline-size;
+  width: 270px;
+  margin: 18px auto 0;
+}
+
+.nt-card {
+  --bg: var(--nt-sheet-blue-bg);
+  --fg: var(--nt-sheet-blue-fg);
+  position: relative;
+  container-type: inline-size;
+  aspect-ratio: 300 / 380;
+  border-radius: calc(22 / 300 * 100cqw);
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.nt-card[data-fill='green'] {
+  --bg: var(--nt-sheet-green-bg);
+  --fg: var(--nt-sheet-green-fg);
+}
+.nt-card[data-fill='red'] {
+  --bg: var(--nt-sheet-red-bg);
+  --fg: var(--nt-sheet-red-fg);
+}
+.nt-card[data-fill='yellow'] {
+  --bg: var(--nt-sheet-yellow-bg);
+  --fg: var(--nt-sheet-yellow-fg);
+}
+.nt-card[data-fill='white'] {
+  --bg: #fff;
+  --fg: var(--nt-ink);
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+}
+
+.nt-card-head {
+  position: absolute;
+  left: calc(18 / 300 * 100cqw);
+  top: calc(18 / 300 * 100cqw);
+  right: calc(18 / 300 * 100cqw);
+}
+
+.nt-card-head .nt-kicker {
+  display: block;
+  font: 700 calc(8.5 / 300 * 100cqw) / 1 var(--nt-font-ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nt-card-head h3 {
+  margin: calc(10 / 300 * 100cqw) 0 0;
+  font-family: var(--nt-font-display);
+  font-size: calc(30 / 300 * 100cqw);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nt-card-head p {
+  margin: calc(12 / 300 * 100cqw) 0 0;
+  font: 600 calc(11.5 / 300 * 100cqw) / 1 var(--nt-font-ui);
+}
+
+.nt-card-st {
+  position: absolute;
+  display: block;
+}
+
+.nt-card-st .nt-art {
+  position: absolute;
+  inset: 0;
+}
+
+.nt-card-more {
+  transform: rotate(8deg);
+}
+
+.nt-card-foot {
+  position: absolute;
+  left: calc(14 / 300 * 100cqw);
+  right: calc(14 / 300 * 100cqw);
+  bottom: 0;
+  height: calc(44 / 300 * 100cqw);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nt-card-mark {
+  padding: calc(4 / 300 * 100cqw) calc(10 / 300 * 100cqw);
+  border: calc(2.5 / 300 * 100cqw) solid #fff;
+  border-radius: 999px;
+  background: var(--nt-yellow);
+  color: var(--nt-ink);
+  font-family: var(--nt-font-display);
+  font-size: calc(12 / 300 * 100cqw);
+  font-variation-settings: 'XROT' 24;
+  transform: rotate(-3deg);
+  box-shadow: var(--nt-sh-edge);
+}
+
+.nt-card-link {
+  font: 600 calc(10 / 300 * 100cqw) / 1 var(--nt-font-ui);
+}
+
+.nt-share-handle {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 36px;
+  height: 5px;
+  margin-left: -18px;
+  border-radius: 999px;
+  background: #e2e2e5;
+}
+
+.nt-share .nt-tb .nt-ib {
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+}
+.nt-share .nt-ib-ring {
+  box-shadow: inset 0 0 0 2px var(--nt-ink) !important;
+}
+.nt-sharemenu {
+  width: 250px;
+}
+
+/* B3·07 modal: 760×500, r30, card 300×380 left. */
+.nt-panel.nt-modal {
+  inset: 0;
+  margin: auto;
+  width: 760px;
+  height: 500px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
   border-radius: 30px;
   background: #fff;
-  transform: rotate(-3deg);
-  filter: var(--nt-sh-die);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
 }
 
-.nt-share-card .nt-sheet {
-  height: 388px;
-  border-radius: 23px;
+.nt-share[data-layout='modal'] {
+  display: flex;
+  gap: 32px;
+  padding: 28px;
 }
 
-.nt-share-card .nt-sheet-head {
-  left: 16px;
-  top: 16px;
+.nt-share[data-layout='modal'] .nt-share-card {
+  flex: none;
+  align-self: flex-start;
+  width: 300px;
+  margin: 0;
 }
 
-.nt-share-card .nt-sheet-head h3 {
-  font-size: 30px;
+.nt-share-side {
+  flex: 1;
+  min-width: 0;
 }
 
-.nt-share-card .nt-sheet-head .nt-kicker {
-  font-size: 10px;
+.nt-share-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-.nt-share-mark {
-  position: absolute;
-  left: 14px;
-  bottom: 14px;
-  font-family: var(--nt-font-display);
-  font-size: 15px;
-  font-variation-settings: 'XROT' 24;
-  z-index: 4;
+.nt-share-head .nt-ttl {
+  flex: 1;
+  align-items: flex-start;
+}
+.nt-share-head .nt-ib {
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+}
+
+.nt-share-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 54px;
+  margin-top: 26px;
+  padding: 0 6px 0 18px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+  font: 600 13px/1 var(--nt-font-ui);
+}
+
+.nt-share-field > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nt-share-field .nt-pill {
+  height: 40px;
+}
+
+.nt-share[data-layout='modal'] .nt-share-acts {
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.nt-share[data-layout='modal'] .nt-toggles {
+  margin: 18px 0 0;
 }
 
 .nt-share-tray {
-  margin-top: 30px;
+  margin-top: 24px;
   padding: 28px 16px 24px;
   border-radius: 28px 28px 0 0;
   background: #fff;
-  box-shadow: 0 -1px 0 var(--nt-line), 0 -6px 14px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 -1px 0 var(--nt-line),
+    0 -6px 14px rgba(0, 0, 0, 0.06);
   position: relative;
 }
 
@@ -2141,18 +2531,47 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   right: 3px;
 }
 
-/* Got page */
+/* Got page (r2 B1·09): full screen, X top-left, title centred. */
+.nt-panel.nt-full {
+  left: 0;
+  width: auto;
+  box-shadow: none;
+}
+
 .nt-gotpage {
-  padding: 0 16px 140px;
+  padding: 0 16px 120px;
+}
+
+.nt-gotpage[data-wide='true'] {
+  max-width: 908px;
+  margin: 0 auto;
+}
+
+.nt-got-bar {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  padding-top: 20px;
+}
+
+.nt-gotpage[data-wide='true'] .nt-got-bar {
+  grid-template-columns: 42px 1fr 42px;
+}
+
+.nt-gotpage[data-wide='true'] .nt-got-bar .nt-ib {
+  width: 42px;
+  height: 42px;
+}
+
+.nt-got-bar h2 {
+  margin: 0;
+  text-align: center;
+  font: 400 24px/1 var(--nt-font-display);
+  font-variation-settings: 'XROT' 24;
 }
 
 .nt-gotpage .nt-sheet {
-  margin-top: 18px;
-}
-
-.nt-gotpage .nt-sheet-head {
-  left: 16px;
-  top: 18px;
+  margin-top: 20px;
 }
 
 .nt-pager {
@@ -2165,18 +2584,21 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
 }
 
 /* Toast */
+/* r2 #24: fixed bottom-centre, never drifts with the page. */
 .nt-toast {
   position: fixed;
   z-index: var(--nt-z-toast);
-  left: 16px;
-  right: 16px;
-  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+  /* r4: Undo stays pressable while a modal dialog holds the page. */
+  pointer-events: auto;
+  /* r2 #24: fixed, centred with translateX so it never drifts. */
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: var(--nt-toast-h);
-  max-width: 480px;
-  margin: 0 auto;
+  width: min(480px, calc(100vw - 48px));
   padding: 0 10px 0 20px;
   border-radius: 999px;
   background: var(--nt-ink);
@@ -2187,7 +2609,7 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
 
 .nt-toast > svg {
   font-size: 22px;
-  color: var(--nt-yellow);
+  color: var(--nt-green);
   flex: none;
 }
 
@@ -2201,7 +2623,7 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   height: 40px;
   padding: 0 16px;
   border-radius: 999px;
-  background: #fff !important;
+  background: var(--nt-yellow) !important;
   color: var(--nt-ink) !important;
   font-family: var(--nt-font-display) !important;
   font-size: 15px !important;
@@ -2275,25 +2697,44 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   font-variant-numeric: tabular-nums;
 }
 
-.nt-public {
-  max-width: 1100px;
-  margin: 0 auto;
+/* B4·01 / B4·02: the public board reuses the owner desk and 390 column. */
+.nt-public.nt-mobile {
+  /* B4·02: Z1 with the 40 bottom reserve, no FAB. */
+  padding-bottom: 40px;
 }
 
-.nt-public .nt-tb {
-  max-width: 1100px;
+.nt-public .nt-pr h1 {
+  margin: 0;
+  font-family: var(--nt-font-display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1;
+  font-variation-settings: 'XROT' 24;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-@media (min-width: 768px) {
-  .nt-public .nt-msheets {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 24px 16px;
-    padding: 0 32px;
-  }
-  .nt-public .nt-msheets > * + * {
-    margin-top: 0;
-  }
+.nt-public .nt-mt .nt-pill[data-tone='yellow'],
+.nt-public .nt-top .nt-pill[data-tone='yellow'] {
+  border: 3px solid #fff;
+  box-shadow: var(--nt-sh-raised);
+  font: 400 14px/1 var(--nt-font-display);
+  font-variation-settings: 'XROT' 24;
+}
+
+.nt-public .nt-mt .nt-pill {
+  height: 44px;
+}
+
+.nt-public .nt-how {
+  height: 44px;
+  padding: 0 18px;
+}
+
+.nt-public .nt-cover .nt-actions {
+  margin-top: 28px;
 }
 
 /* Item panel overflow menu (not in the frames: plain white card, see PR gaps) */
@@ -2339,5 +2780,578 @@ button.nt-stat { cursor: pointer; pointer-events: auto; }
   margin: 48px 16px;
   text-align: center;
   font: 600 15px/1.4 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+
+/* ---------------- r2 board chrome ---------------- */
+
+/* #unsorted (paper-2 + hairline) and white tabs (B1·05 / new sheet cycle). */
+.nt-tab[data-fill='white'] {
+  --bg: #fff;
+  --fg: var(--nt-ink);
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+}
+.nt-tab[data-fill='paper'] {
+  --bg: var(--nt-paper-2);
+  --fg: var(--nt-ink);
+  box-shadow: var(--nt-sh-hairline);
+}
+.nt-tab-check {
+  font-size: 16px;
+}
+
+/* r2 #32: the active #all / blank tab is ink everywhere. */
+.nt-mtabs .nt-tab[aria-selected='true'][data-fill='blank'],
+.nt-mtabs .nt-tab[aria-selected='true'][data-fill='all'] {
+  color: #fff !important;
+}
+.nt-mtabs .nt-tab[aria-selected='true'][data-fill='blank']::before,
+.nt-mtabs .nt-tab[aria-selected='true'][data-fill='all']::before {
+  background: var(--nt-ink);
+  box-shadow: none;
+}
+.nt-mtabs .nt-tab[data-fill='white']::before,
+.nt-mtabs .nt-tab[data-fill='paper']::before {
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+}
+
+/* Icon seg (B1·01 / B1·06): 3 round buttons, ink when pressed. */
+.nt-seg {
+  align-items: center;
+  height: 44px;
+  padding: 3px;
+  gap: 2px;
+}
+.nt-seg button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 18px !important;
+}
+.nt-seg[data-disabled='true'],
+.nt-sort:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Sort chip "⇅ Priority ▾". */
+.nt-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--nt-ink);
+  font: 600 14px/1 var(--nt-font-ui);
+  box-shadow: var(--nt-sh-hairline);
+}
+.nt-sort svg {
+  font-size: 16px;
+}
+.nt-sort[data-state='open'] {
+  box-shadow: inset 0 0 0 2px var(--nt-ink);
+}
+
+.nt-sortmenu {
+  width: 248px;
+  padding: 6px 0;
+}
+.nt-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: 0;
+  font: 600 15px/1 var(--nt-font-ui);
+  color: var(--nt-ink);
+  text-align: left;
+}
+.nt-sortmenu .nt-sort-row {
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 13px;
+  gap: 12px;
+}
+.nt-sort-row svg {
+  font-size: 20px;
+  flex: none;
+}
+.nt-sortmenu .nt-sort-row svg {
+  font-size: 16px;
+}
+.nt-sort-row[aria-checked='true'],
+.nt-sort-row[data-state='checked'] {
+  background: var(--nt-paper-2);
+}
+.nt-sort-row .nt-sort-check {
+  margin-left: auto;
+}
+.nt-sortsheet {
+  padding: 8px 0 20px;
+}
+
+/* 390 toolbar: sort left, seg right (B1·01). */
+.nt-mtools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 16px 0;
+}
+
+/* r2 #9: 390 stat labels 12/600. */
+.nt-pr-stats .nt-stat-want small,
+.nt-pr-stats .nt-stat-got small {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* B4·03: the empty 1440 sheet — 876×504, #EFEFF0, r26. */
+.nt-empty-desk {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 876 / 504;
+  border-radius: 26px;
+  background: #efeff0;
+  container-type: inline-size;
+}
+.nt-empty-sils {
+  position: absolute;
+  inset: 0 50% 0 0;
+}
+.nt-empty-copy {
+  position: absolute;
+  left: 52%;
+  right: 6%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.nt-empty-copy b {
+  font-family: var(--nt-font-display);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.05;
+  font-variation-settings: 'XROT' 24;
+}
+.nt-empty-copy p {
+  margin: 0;
+  font: 500 15px/1.4 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-empty-copy .nt-cta {
+  height: 58px;
+  margin-top: 10px;
+}
+.nt-paste-hint kbd {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #fff;
+  font: 700 11px/1 var(--nt-font-num);
+  color: var(--nt-text-muted);
+}
+
+/* r2 B2·04: 1440 item panel — 480w, full height, sheet colour, r30 left. */
+.nt-panel.nt-itemwide {
+  --bg: var(--nt-sheet-blue-bg);
+  --fg: var(--nt-sheet-blue-fg);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 30px 0 0 30px;
+}
+.nt-panel.nt-itemwide[data-fill='green'] {
+  --bg: var(--nt-sheet-green-bg);
+  --fg: var(--nt-sheet-green-fg);
+}
+.nt-panel.nt-itemwide[data-fill='red'] {
+  --bg: var(--nt-sheet-red-bg);
+  --fg: var(--nt-sheet-red-fg);
+}
+.nt-panel.nt-itemwide[data-fill='yellow'] {
+  --bg: var(--nt-yellow);
+  --fg: var(--nt-ink);
+}
+.nt-item-top[data-layout='wide'] {
+  height: 310px;
+  background: transparent;
+}
+.nt-item-nav[data-layout='wide'] {
+  gap: 8px;
+  justify-content: flex-start;
+}
+.nt-item-nav[data-layout='wide'] .nt-ib {
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+.nt-item-kicker {
+  flex: 1;
+  font: 600 10.5px/1 var(--nt-font-num);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.nt-item-top[data-layout='wide'] .nt-hero {
+  top: 92px;
+}
+.nt-pane[data-layout='wide'] {
+  margin-top: 0;
+  min-height: 0;
+  padding: 0 24px 120px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--fg);
+}
+.nt-pane[data-layout='wide'] .nt-brand,
+.nt-pane[data-layout='wide'] .nt-also-head {
+  color: inherit;
+  opacity: 0.8;
+}
+.nt-pane[data-layout='wide'] .nt-also {
+  border-top: 0;
+  padding-top: 0;
+}
+.nt-pane[data-layout='wide'] .nt-also-more {
+  color: inherit;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+.nt-act[data-layout='wide'] {
+  padding: 0 24px 24px;
+}
+.nt-act[data-layout='wide'] .nt-cta {
+  height: 58px;
+}
+
+/* r2 §3 faded minis: 72×56 tiles, r12, gap 8; got = .14 silhouette + green check. */
+.nt-also-row {
+  gap: 8px;
+}
+.nt-mini {
+  width: 72px;
+  height: 56px;
+  border-radius: 12px;
+}
+.nt-pane[data-layout='wide'] .nt-mini {
+  background: rgba(255, 255, 255, 0.18);
+}
+.nt-mini .nt-art {
+  inset: 6px;
+}
+.nt-mini .nt-sil {
+  position: absolute;
+  inset: 6px;
+}
+.nt-mini-check {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px #fff;
+  color: #1fa45a;
+}
+
+/* r2 #19: link chip label, ellipsised at ~28ch. */
+.nt-chip-link {
+  display: inline-block;
+  max-width: 28ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* r2 #28: pencil 16 right after the title. */
+.nt-ptitle h2 .nt-ptitle-edit {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 4px;
+  vertical-align: middle;
+  color: var(--nt-ink);
+  font-size: 16px;
+}
+
+/* r3 B2·04: 10 gap; white "Print sticker" (auto, 58h, padding 0 20, icon 20). */
+.nt-act[data-layout='wide'] {
+  gap: 10px;
+}
+.nt-print-sticker {
+  flex: none;
+  height: 58px;
+  padding: 0 20px;
+}
+.nt-print-sticker svg {
+  font-size: 20px;
+}
+
+/* r3 B2·04 overflow popover: 220w, r18, 6px 0, rows 40h 14px, icons 18. */
+.nt-dd.nt-ovf {
+  width: 220px;
+  min-width: 220px;
+  padding: 6px 0;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 2px 4px rgba(0, 0, 0, 0.06),
+    0 12px 28px rgba(0, 0, 0, 0.12);
+}
+.nt-ovf .nt-dd-item {
+  gap: 12px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 0;
+  font: 600 14px/1 var(--nt-font-ui);
+}
+.nt-ovf .nt-dd-item svg {
+  flex: none;
+  width: 18px;
+  font-size: 18px;
+}
+.nt-ovf .nt-dd-item[data-state='open'] {
+  background: var(--nt-paper-2);
+}
+.nt-dd-r {
+  margin-left: auto;
+}
+.nt-dd-sep {
+  height: 1.5px;
+  margin: 4px 0;
+  background: var(--nt-line);
+}
+
+/* r3 B2·05 390 overflow sheet: grabber, thumb header, 52h rows. */
+.nt-bottom.nt-ovf-sheet {
+  padding: 0 0 calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.nt-ovf-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px 10px;
+}
+.nt-ovf-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
+}
+.nt-ovf-thumb .nt-art {
+  position: absolute;
+  inset: 4px;
+}
+.nt-ovf-head b {
+  display: block;
+  font: 600 15px/1.2 var(--nt-font-ui);
+}
+.nt-ovf-head small {
+  display: block;
+  margin-top: 4px;
+  font: 600 12px/1 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-ovf-row {
+  gap: 12px;
+}
+.nt-ovf-row svg {
+  width: 22px;
+  font-size: 21px;
+}
+.nt-ovf-row[data-tone='red'] {
+  color: var(--nt-red-text);
+}
+
+/* r3 B2·03 price sheet. */
+.nt-price {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 272px;
+  padding: 0 4px 78px;
+}
+.nt-price-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nt-price-head h2 {
+  margin: 0;
+  font: 400 20px/1 var(--nt-font-display);
+  font-variation-settings: 'XROT' 24;
+  letter-spacing: -0.02em;
+}
+.nt-price-head .nt-ib {
+  width: 40px;
+  height: 40px;
+}
+.nt-price-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--nt-ink);
+}
+.nt-price-cur {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: var(--nt-paper-2);
+  font: 600 13.5px/1 var(--nt-font-ui);
+}
+.nt-price-cur svg {
+  font-size: 12px;
+}
+.nt-price-sym,
+.nt-price-amt {
+  font: 700 40px/1 var(--nt-font-num);
+  letter-spacing: -0.02em;
+  color: var(--nt-ink);
+}
+.nt-price-amt {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  caret-color: var(--nt-ink);
+}
+.nt-price-sub {
+  margin: 8px 0 0;
+  font: 600 12.5px/1.3 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-price .nt-cta {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 0;
+  height: 54px;
+  border: 0 !important;
+  font: 600 16px/1 var(--nt-font-ui) !important;
+  box-shadow: none;
+}
+
+/* r3 Print sticker: only the panel hero prints. */
+@media print {
+  html.nt-printing body * {
+    visibility: hidden !important;
+  }
+  html.nt-printing .nt-hero,
+  html.nt-printing .nt-hero * {
+    visibility: visible !important;
+  }
+  html.nt-printing .nt-hero {
+    position: fixed !important;
+    inset: 0 !important;
+    margin: auto !important;
+    transform: none !important;
+  }
+}
+
+/* r3 B3·02: red last row; disabled rows muted. Confirm sheet (copy TBD). */
+.nt-sort-row[data-tone='red'] {
+  color: var(--nt-red-text);
+}
+.nt-sort-row[data-disabled] {
+  color: var(--nt-text-muted);
+  cursor: default;
+}
+.nt-confirm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+.nt-confirm-head h2 {
+  margin: 0;
+  font: 400 20px/1.1 var(--nt-font-display);
+  font-variation-settings: 'XROT' 24;
+  letter-spacing: -0.02em;
+}
+.nt-confirm-head .nt-ib {
+  width: 40px;
+  height: 40px;
+}
+.nt-confirm-body {
+  margin: 10px 4px 20px;
+  font: 600 14px/1.4 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-confirm .nt-confirm-go {
+  width: 100%;
+  height: 54px;
+  border: 0 !important;
+  box-shadow: none;
+}
+
+/* r4: Move, wide price and wide confirms are centred 440 modals; no frame, so reuse the B2·03 sheet's 440 width and padding. */
+.nt-panel.nt-modal.nt-price-layer,
+.nt-panel.nt-modal.nt-confirm,
+.nt-panel.nt-modal.nt-move {
+  width: 440px;
+  height: fit-content;
+  padding: 28px 16px 24px;
+}
+
+/* r4 stopped state: card at 40%, the link field becomes a "Sharing is off" line + Share again. */
+.nt-share-card[data-off='true'] {
+  opacity: 0.4;
+}
+.nt-share-off {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 54px;
+  margin-top: 26px;
+  padding: 0 6px 0 4px;
+  font: 600 13px/1 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-share-off > span {
+  flex: 1;
+  min-width: 0;
+}
+.nt-share-off .nt-pill {
+  height: 40px;
+}
+/* r5 stopped state: Story, Message, Save image and both toggles are off at
+   40%; Share again is the only live share control. 390 gets one line under
+   the faded card. */
+.nt-share-act:disabled,
+.nt-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.nt-share-off-line {
+  margin: 12px 0 0;
+  text-align: center;
+  font: 600 13px/1.3 var(--nt-font-ui);
   color: var(--nt-text-muted);
 }

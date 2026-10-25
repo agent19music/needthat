@@ -46,7 +46,8 @@ export function gateCutout(
     }
   }
   const coverage = area === 0 ? 0 : opaque / area
-  const mainBlob = opaque === 0 ? 0 : largestComponent(mask, width, height) / opaque
+  const mainBlob =
+    opaque === 0 ? 0 : largestComponent(mask, width, height) / opaque
   const touchedEdges = countTouchedEdges(mask, width, height)
   const stats = { coverage, mainBlob, touchedEdges }
   if (coverage < GATE.minCoverage || coverage > GATE.maxCoverage)
@@ -139,7 +140,9 @@ export function bakeDie(
   const dist = new Float64Array(area).fill(far)
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      if (data[(y * width + x) * 4 + 3] > 0)
+      // Threshold the mask at 50% (handoff §8.3) so soft fringe and faint
+      // shadow pixels don't grow a hairy border.
+      if (data[(y * width + x) * 4 + 3] >= 128)
         dist[(y + pad) * outWidth + x + pad] = 0
     }
   }
@@ -184,7 +187,8 @@ function chamfer(dist: Float64Array, width: number, height: number) {
       if (y > 0) {
         best = Math.min(best, dist[pixel - width] + straight)
         if (x > 0) best = Math.min(best, dist[pixel - width - 1] + diagonal)
-        if (x + 1 < width) best = Math.min(best, dist[pixel - width + 1] + diagonal)
+        if (x + 1 < width)
+          best = Math.min(best, dist[pixel - width + 1] + diagonal)
       }
       dist[pixel] = best
     }
@@ -196,7 +200,8 @@ function chamfer(dist: Float64Array, width: number, height: number) {
       if (x + 1 < width) best = Math.min(best, dist[pixel + 1] + straight)
       if (y + 1 < height) {
         best = Math.min(best, dist[pixel + width] + straight)
-        if (x + 1 < width) best = Math.min(best, dist[pixel + width + 1] + diagonal)
+        if (x + 1 < width)
+          best = Math.min(best, dist[pixel + width + 1] + diagonal)
         if (x > 0) best = Math.min(best, dist[pixel + width - 1] + diagonal)
       }
       dist[pixel] = best
@@ -217,13 +222,42 @@ export type StickerCut =
     }
   | { kind: 'photo'; reason: 'no-backdrop' | GateFailure }
 
+/**
+ * Shops often publish product PNGs that are already cut out. When nearly the
+ * whole image border is transparent, use that alpha as the cut-out instead
+ * of flood filling (which needs a flat, light backdrop).
+ */
+export function hasTransparentBorder(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+) {
+  let total = 0
+  let clear = 0
+  const check = (x: number, y: number) => {
+    total += 1
+    if (data[(y * width + x) * 4 + 3] < 16) clear += 1
+  }
+  for (let x = 0; x < width; x += 1) {
+    check(x, 0)
+    check(x, height - 1)
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    check(0, y)
+    check(width - 1, y)
+  }
+  return total > 0 && clear / total >= 0.9
+}
+
 /** Flood fill → gate → crop → die border; or a photo-sticker verdict. */
 export function cutSticker(
   source: Uint8ClampedArray,
   width: number,
   height: number,
 ): StickerCut {
-  const frame = liftStudioBackdropFrame(source, width, height)
+  const frame = hasTransparentBorder(source, width, height)
+    ? { data: source }
+    : liftStudioBackdropFrame(source, width, height)
   if (!frame) return { kind: 'photo', reason: 'no-backdrop' }
   const gate = gateCutout(frame.data, width, height)
   if (!gate.ok) return { kind: 'photo', reason: gate.reason }
@@ -240,20 +274,36 @@ export const DIE_MAX_SIDE = 800
 export async function cutStickerBlob(blob: Blob) {
   const bitmap = await createImageBitmap(blob)
   try {
-    const scale = Math.min(1, DIE_MAX_SIDE / Math.max(bitmap.width, bitmap.height))
+    const scale = Math.min(
+      1,
+      DIE_MAX_SIDE / Math.max(bitmap.width, bitmap.height),
+    )
     const width = Math.max(1, Math.round(bitmap.width * scale))
     const height = Math.max(1, Math.round(bitmap.height * scale))
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
     const context = canvas.getContext('2d', { willReadFrequently: true })
-    if (!context) return { kind: 'photo' as const, reason: 'no-backdrop' as const }
+    if (!context)
+      return { kind: 'photo' as const, reason: 'no-backdrop' as const }
     context.drawImage(bitmap, 0, 0, width, height)
-    const cut = cutSticker(context.getImageData(0, 0, width, height).data, width, height)
+    const cut = cutSticker(
+      context.getImageData(0, 0, width, height).data,
+      width,
+      height,
+    )
     if (cut.kind === 'photo') return cut
     canvas.width = cut.width
     canvas.height = cut.height
-    context.putImageData(new ImageData(cut.data as Uint8ClampedArray<ArrayBuffer>, cut.width, cut.height), 0, 0)
+    context.putImageData(
+      new ImageData(
+        cut.data as Uint8ClampedArray<ArrayBuffer>,
+        cut.width,
+        cut.height,
+      ),
+      0,
+      0,
+    )
     const png = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob((value) => resolve(value), 'image/png')
     })

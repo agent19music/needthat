@@ -40,6 +40,8 @@ export const lists = sqliteTable(
     shareClaims: integer('share_claims', { mode: 'boolean' })
       .notNull()
       .default(true),
+    /** r3 share "…" → Stop sharing (C101). Off: the public page shows nothing. */
+    shareOn: integer('share_on', { mode: 'boolean' }).notNull().default(true),
     ...timestamps,
   },
   (table) => [index('lists_user_id_idx').on(table.userId)],
@@ -54,7 +56,7 @@ export const categories = sqliteTable(
       .references(() => lists.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     /** Sheet colour. Null rows fall back to the blue → green → red cycle by creation order. */
-    color: text('color', { enum: ['blue', 'green', 'red'] }),
+    color: text('color', { enum: ['blue', 'green', 'red', 'white'] }),
     createdAt: timestamps.createdAt,
   },
   (table) => [index('categories_list_id_idx').on(table.listId)],
@@ -116,7 +118,10 @@ export const listItems = sqliteTable(
   (table) => [
     index('list_items_list_id_idx').on(table.listId),
     index('list_items_list_position_idx').on(table.listId, table.position),
-    uniqueIndex('list_items_list_client_id_idx').on(table.listId, table.clientId),
+    uniqueIndex('list_items_list_client_id_idx').on(
+      table.listId,
+      table.clientId,
+    ),
   ],
 )
 
@@ -238,7 +243,9 @@ export const providerUsage = sqliteTable(
     provider: text('provider').notNull(),
     operation: text('operation').notNull(),
     subjectKey: text('subject_key').notNull(),
-    cacheHit: integer('cache_hit', { mode: 'boolean' }).notNull().default(false),
+    cacheHit: integer('cache_hit', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     createdAt: timestamps.createdAt,
   },
   (table) => [

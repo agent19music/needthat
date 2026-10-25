@@ -33,26 +33,31 @@ export async function loadPublicWishlist(
       .get()
     const showPrices = list?.sharePrices ?? true
     const allowClaims = list?.shareClaims ?? true
+    // r3 Stop sharing: the page stays (Q7 open) but shows nothing shared.
+    const sharing = list?.shareOn ?? true
     const isOwner = viewer?.id === person.id
-    const rows = list
-      ? await db
-          .select()
-          .from(listItems)
-          .where(eq(listItems.listId, list.id))
-          .orderBy(desc(listItems.createdAt))
-      : []
-    const categoryRows = list
-      ? await db
-          .select()
-          .from(categories)
-          .where(eq(categories.listId, list.id))
-          .orderBy(categories.createdAt)
-      : []
+    const rows =
+      list && sharing
+        ? await db
+            .select()
+            .from(listItems)
+            .where(eq(listItems.listId, list.id))
+            .orderBy(desc(listItems.createdAt))
+        : []
+    const categoryRows =
+      list && sharing
+        ? await db
+            .select()
+            .from(categories)
+            .where(eq(categories.listId, list.id))
+            .orderBy(categories.createdAt)
+        : []
     const ids = rows.map((row) => row.id)
     const prices = showPrices ? await readPrices(ids) : new Map<string, Price>()
-    const claimRows =
-      allowClaims && !isOwner ? await readClaims(ids) : []
-    const claimedBy = new Map(claimRows.map((row) => [row.itemId, row.claimerId]))
+    const claimRows = allowClaims && !isOwner ? await readClaims(ids) : []
+    const claimedBy = new Map(
+      claimRows.map((row) => [row.itemId, row.claimerId]),
+    )
     const items = rows.map((row) => {
       const claimer = claimedBy.get(row.id)
       const purchased = row.status === 'purchased'
@@ -82,6 +87,7 @@ export async function loadPublicWishlist(
           name: person.name,
           image: person.image,
           showPrices,
+          sharing,
           categories: categoryRows.map((row) => [row.id, row.name, row.color]),
           items: items.map((item) => [
             item.id,
@@ -150,13 +156,24 @@ async function readClaims(ids: Array<string>) {
 }
 
 /** Claim ("I'll get this"). Owners can't claim their own items. */
-export async function claimPublicItem(viewer: Viewer, username: string, itemId: string) {
+export async function claimPublicItem(
+  viewer: Viewer,
+  username: string,
+  itemId: string,
+) {
   return Sentry.startSpan({ name: 'Claiming a wishlist item' }, async () => {
     if (!viewer) return { ok: false as const, message: 'Sign in to claim' }
     const target = await findSharedItem(username, itemId)
-    if (!target) return { ok: false as const, message: "That sticker isn't on this sheet." }
+    if (!target)
+      return {
+        ok: false as const,
+        message: "That sticker isn't on this sheet.",
+      }
     if (target.ownerId === viewer.id)
-      return { ok: false as const, message: "You can't claim your own sticker." }
+      return {
+        ok: false as const,
+        message: "You can't claim your own sticker.",
+      }
     if (!target.allowClaims)
       return { ok: false as const, message: 'Claims are off for this sheet.' }
     if (target.purchased)
@@ -210,7 +227,8 @@ async function findSharedItem(username: string, itemId: string) {
     .from(lists)
     .where(eq(lists.userId, person.id))
     .get()
-  if (!list) return null
+  // Stop sharing: nothing on the list can be claimed either.
+  if (!list || !list.shareOn) return null
   const item = await db
     .select({ id: listItems.id, status: listItems.status })
     .from(listItems)
