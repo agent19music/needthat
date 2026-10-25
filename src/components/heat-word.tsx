@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 
 const WORD = '#needthat'
-const FONT = '800 52px "PP Mori", sans-serif'
+// Canvas can't set font-variation-settings, so this draws Tilt Warp at its default XROT.
+const FONT = '400 52px "Tilt Warp Variable", "Tilt Warp", sans-serif'
 
 export function HeatWord() {
   const canvasRef = useRef<HTMLCanvasElement>(null)

@@ -1,0 +1,216 @@
+/* needthat · Sticker Sheet tokens · v1 (2026-10-25)
+   Source of truth: the frames in screens/ plus the kit CSS in vibes-r2/src/sticker.py.
+   Where a token differs from a frame, the comment says why (usually WCAG AA or the "no glow" rule).
+   Prefix --nt-* so it can sit next to the existing --stk-* (stacks.css) and arc tokens without clashes.
+   Rules: no gradients, no backdrop blur, no coloured glows. Neutral, short, physical shadows only. */
+
+:root {
+  /* ---- Brand palette (fills) ---- */
+  --nt-yellow: #FFC72C;   /* Got page, wordmark, FAB, Print CTA, price dots */
+  --nt-red:    #D9372B;   /* #football sheet, Got-it CTA, GOT IT! burst, delete */
+  --nt-blue:   #2F5BEA;   /* #desk sheet, avatar, link accents */
+  --nt-green:  #1FA45A;   /* #fits sheet, Got check */
+  --nt-ink:    #1D1D1F;   /* text, active tab, board top rule, toast, CLAIMED tag */
+  --nt-white:  #FFFFFF;   /* die-cut border, cards, pills */
+  --nt-paper:  #F9F9FA;   /* page bg, liner pane (item detail) */
+  --nt-paper-2:#EFEFF0;   /* board, chips, inputs, tape */
+  --nt-line:   #E2E2E5;   /* hairlines (decorative, 1.29:1 on white) */
+  --nt-slot:   #C9C9CE;   /* dashed empty slots (decorative) */
+
+  /* ---- AA-safe text variants (use these for TEXT/ICONS on light grounds) ---- */
+  --nt-text:            #1D1D1F; /* 16.83 on white, 14.65 on paper-2 */
+  --nt-text-muted:      #5F5F64; /* 6.35 white · 6.03 paper · 5.53 paper-2 */
+  --nt-text-on-dark:    #FFFFFF; /* on ink / red / blue only */
+  --nt-red-text:        #C4322A; /* red text on light: 5.47 white · 5.20 paper · 4.76 paper-2. #D9372B is 4.40 on paper = FAIL */
+  --nt-red-strong:      #B82E24; /* 6.08 white · 5.78 paper; pressed state of red */
+  --nt-green-text:      #14763F; /* green text/icons on light, or white-on-green fills: 5.69 */
+  --nt-green-strong:    #178048; /* 4.98 white; optional pressed/fill alt */
+  --nt-blue-text:       #2F5BEA; /* 5.52 white · 5.24 paper · 4.80 paper-2: OK as-is */
+
+  /* ---- Sheets (one per tag) : fill + text. Text is always 100% opacity. ---- */
+  /* Frames use opacity .82–.85 for kickers/sub-captions on sheets: those FAIL AA on red/blue/green. Use full colour. */
+  --nt-sheet-blue-bg:   var(--nt-blue);   --nt-sheet-blue-fg:   #FFFFFF; /* 5.52 */
+  --nt-sheet-green-bg:  var(--nt-green);  --nt-sheet-green-fg:  #1D1D1F; /* 5.22 (white = 3.22 FAIL) */
+  --nt-sheet-red-bg:    var(--nt-red);    --nt-sheet-red-fg:    #FFFFFF; /* 4.63 (ink = 3.63 FAIL) */
+  --nt-sheet-yellow-bg: var(--nt-yellow); --nt-sheet-yellow-fg: #1D1D1F; /* 10.79 (white 1.56 FAIL). Reserved for Got */
+  --nt-sheet-blank-bg:  #FFFFFF;          --nt-sheet-blank-fg:  #1D1D1F; /* empty / new sheet */
+  /* Tag→colour cycle for user sheets (Got is always yellow): blue, green, red, then repeat. See HANDOFF open Q1. */
+
+  /* ---- Price dot fills ---- */
+  --nt-dot-yellow: #FFC72C; --nt-dot-yellow-fg: #1D1D1F;
+  --nt-dot-red:    #D9372B; --nt-dot-red-fg:    #FFFFFF;
+  --nt-dot-blue:   #2F5BEA; --nt-dot-blue-fg:   #FFFFFF;
+  --nt-dot-green:  #1FA45A; --nt-dot-green-fg:  #1D1D1F;
+  --nt-dot-ink:    #1D1D1F; --nt-dot-ink-fg:    #FFFFFF;
+  --nt-dot-white:  #FFFFFF; --nt-dot-white-fg:  #1D1D1F; /* + 3px ink border when on a white/paper ground */
+  /* Rule: dot colour must differ from the sheet it sits on (red dot on blue/green sheets, yellow on red, etc.). */
+
+  /* ---- Typography ---- */
+  --nt-font-display: 'Tilt Warp Variable', 'Tilt Warp', system-ui, sans-serif;     /* titles, tabs, CTAs, badges */
+  --nt-font-ui:      'Funnel Sans Variable', 'Funnel Sans', system-ui, sans-serif; /* body, captions, pills */
+  --nt-font-num:     'Funnel Display Variable', 'Funnel Display', system-ui, sans-serif; /* prices, counts, dates, kickers */
+  --nt-display-variation: 'XROT' 24;  /* always on Tilt Warp; weight is fixed 400 */
+  --nt-display-tracking: -0.02em;     /* -0.03em at >= 30px */
+  --nt-ui-weight: 450;                /* body; 600 for captions/pills/chips */
+
+  /* Display (Tilt Warp) */
+  --nt-fs-profile-name: 38px;  /* 1440 cover; 22px on 390 */
+  --nt-fs-sheet-title:  34px;  /* sheet h3 1440; 32px on 390 */
+  --nt-fs-wordmark:     30px;  /* 1440; 22px on 390 */
+  --nt-fs-item-title:   27px;  /* item detail h1, lh 1.08 */
+  --nt-fs-card-title:   23px;  /* add-flow preview title */
+  --nt-fs-page-title:   22px;  /* Got page, Share sheet header */
+  --nt-fs-cta:          18px;  /* 58–62px CTAs */
+  --nt-fs-tab:          16px;  /* binder tabs 1440; 14px on 390 */
+  --nt-fs-badge:        13px;  /* NEW / SIGNED / GOT IT! / CLAIMED; 11px minimum */
+
+  /* UI (Funnel Sans) */
+  --nt-fs-input:   17px;
+  --nt-fs-body:    15px;
+  --nt-fs-pill:    14px;  /* 600 */
+  --nt-fs-chip:    13.5px;/* 600 */
+  --nt-fs-meta:    13px;
+  --nt-fs-caption: 12px;  /* 600 / 1.25, under each sticker */
+  --nt-fs-caption-sub: 11px; /* 500, full opacity (frames use .82, fails) */
+
+  /* Numbers (Funnel Display, tabular-nums) */
+  --nt-fs-counter: 28px;  /* profile stats 1440; 24px on 390 */
+  --nt-fs-count:   13px;  /* "4 stickers · $1,998" */
+  --nt-fs-kicker:  10.5px;/* 600, uppercase, tracking .14em: "SHEET 01" (raise to 11px if it reads small on device) */
+  --nt-fs-got-label: 11px;/* 700, tracking .06em, date "GOT 24.10" */
+  --nt-dot-font-ratio: 0.27; /* price-dot font-size = dot diameter × .27, weight 700 */
+  /* Floor: no text below 11px. The 390 profile stat labels (9–9.5px) must go to 11px. */
+
+  /* ---- Radii ---- */
+  --nt-r-sheet: 26px;
+  --nt-r-cover: 28px;           /* 1440 cover card; board = 0 28 28 28 */
+  --nt-r-tab-lg: 16px 16px 0 0; /* 1440 */
+  --nt-r-tab-sm: 14px;          /* 390 (free-standing tabs) */
+  --nt-r-pane: 30px 30px 0 0;   /* item liner pane, bottom sheets 28px */
+  --nt-r-bottom-sheet: 28px 28px 0 0;
+  --nt-r-card: 20px;            /* blank slots, share card inner, preview mat 26 */
+  --nt-r-field: 18px;           /* link field, photo-sticker outer */
+  --nt-r-photo-outer: 18px;
+  --nt-r-photo-inner: 12px;
+  --nt-r-note: 14px;
+  --nt-r-pill: 999px;           /* pills, chips, toast, FAB, dots */
+
+  /* ---- Spacing (4-pt, plus 6/7 for sticker internals) ---- */
+  --nt-sp-1: 4px;  --nt-sp-2: 8px;  --nt-sp-3: 12px; --nt-sp-4: 16px;
+  --nt-sp-5: 20px; --nt-sp-6: 24px; --nt-sp-7: 28px; --nt-sp-8: 32px;
+  --nt-sp-10: 40px; --nt-sp-16: 64px;
+  --nt-page-x-lg: 64px;  /* 1440 left/right */
+  --nt-page-x-sm: 16px;  /* 390: sheet = 100vw - 32 = 358 */
+  --nt-board-pad: 28px;  /* 1440 board inner padding */
+  --nt-sheet-gap: 16px;  /* horizontal gap between sheets on the 1440 board; 24px vertical */
+  --nt-sheet-inset: 12px;/* min distance a sticker's die edge keeps from the sheet edge */
+  --nt-photo-pad: 7px;   /* photo-sticker white frame */
+
+  /* ---- Die-cut border (white "kiss-cut" around a cutout) ---- */
+  --nt-die-sm: 6px;   /* sheet stickers ≤ 110px tall */
+  --nt-die-md: 8px;   /* sheet stickers 110–200px */
+  --nt-die-lg: 12px;  /* item hero, peel-up, share card hero */
+  /* Rule of thumb: ≈ 4% of the sticker's longest side, clamp(6px, 4%, 14px). Baked into the PNG at ingest (see CUTOUT). */
+
+  /* ---- Borders ---- */
+  --nt-b-white-thick: 4px solid #FFFFFF; /* FAB, CTAs, wordmark, avatar */
+  --nt-b-dot: 3px solid #FFFFFF;         /* price dots, star badges (stroke) */
+  --nt-b-board: 4px solid var(--nt-ink); /* top of the 1440 board, joins active tab */
+  --nt-b-slot: 2px dashed var(--nt-slot);/* empty slots on blank sheets */
+  --nt-b-slot-target: 2.5px dashed rgba(29,29,31,.45); /* Got-page landing slot during fly */
+
+  /* ---- Shadows (neutral only; no blur glows, no coloured shadows) ---- */
+  /* Cutout stickers use filter: drop-shadow so the shadow follows the die shape. */
+  --nt-sh-die:      drop-shadow(0 1px 0 rgba(0,0,0,.18)) drop-shadow(0 2px 3px rgba(0,0,0,.10));
+  --nt-sh-die-hover:drop-shadow(0 1px 0 rgba(0,0,0,.16)) drop-shadow(0 6px 8px rgba(0,0,0,.14));
+  --nt-sh-die-lift: drop-shadow(0 2px 0 rgba(0,0,0,.10)) drop-shadow(0 18px 22px rgba(0,0,0,.28)); /* peel / drag only */
+  --nt-sh-die-press:drop-shadow(0 1px 0 rgba(0,0,0,.20));
+  /* Box elements (pills, dots, cards, buttons) */
+  --nt-sh-edge:     0 1px 0 rgba(0,0,0,.16);                          /* dots, chips, tags */
+  --nt-sh-chip:     0 1px 0 rgba(0,0,0,.16), 0 0 0 1px rgba(0,0,0,.05); /* chips, notes, round buttons, tabs */
+  --nt-sh-hairline: 0 0 0 1.5px var(--nt-line);                       /* white pills/fields/search on paper */
+  /* Sheets themselves are flat: no shadow. Their ±1° rotation + colour does the work. */
+  --nt-sh-raised:   0 1px 0 rgba(0,0,0,.16), 0 10px 24px rgba(0,0,0,.18); /* FAB, primary CTA, toast */
+  --nt-sh-up:       0 -1px 0 var(--nt-line), 0 -14px 34px rgba(0,0,0,.10); /* bottom sheets (claim, share), liner pane */
+  /* NOTE: item-detail CTA frame uses 0 8px 18px rgba(217,55,43,.28) = tinted glow. Replace with --nt-sh-raised. */
+
+  /* ---- Rotation ---- */
+  --nt-rot-sticker-max: 6deg;  /* rest range: ±2..6°, seeded from item id */
+  --nt-rot-sticker-min: 2deg;
+  --nt-rot-lift-delta: -8deg;  /* added while peeling (frame: -5° → -13°) */
+  --nt-rot-sheet-max: 1deg;    /* sheets: ±0.5..1°; the active mobile sheet sits at 0 */
+  --nt-rot-label-max: 4deg;    /* chips, notes, tags: ±1..4° */
+  --nt-rot-dot-min: -10deg; --nt-rot-dot-max: 14deg;
+  --nt-scale-lift: 1.06;
+  --nt-scale-press: 0.96;
+
+  /* ---- Sizes ---- */
+  --nt-tap: 44px;          /* minimum hit target, everywhere */
+  --nt-icon-btn: 42px;     /* visual; pad hit area to 44 */
+  --nt-round-btn: 52px;    /* item detail round actions */
+  --nt-pill-h: 38px;
+  --nt-chip-h: 36px;
+  --nt-tab-h-lg: 44px; --nt-tab-h-lg-active: 52px;
+  --nt-tab-h-sm: 36px; --nt-tab-h-sm-active: 44px; /* inactive 36 visual → 44 hit area */
+  --nt-fab-h: 56px;
+  --nt-cta-h: 58px;        /* 62px for Print sticker */
+  --nt-field-h: 56px;
+  --nt-toast-h: 58px;
+  --nt-dot-sm: 44px; --nt-dot-md: 60px; --nt-dot-lg: 92px;
+  --nt-touch-ring: 58px;   /* peel-drag finger ring (decorative) */
+
+  /* ---- Z layers ---- */
+  --nt-z-sheet: 0;
+  --nt-z-sticker: 1;       /* + stacking index within a sheet (newest on top) */
+  --nt-z-dot: 5;           /* price dot above its sticker */
+  --nt-z-badge: 6;         /* NEW / GOT label */
+  --nt-z-tape: 7;
+  --nt-z-header: 10;
+  --nt-z-fab: 20;
+  --nt-z-drag: 30;         /* the sticker being peeled/flown, above everything on the page */
+  --nt-z-sheet-overlay: 40;/* bottom sheets, item pane, Got page rising */
+  --nt-z-toast: 50;
+
+  /* ---- Focus ---- */
+  --nt-focus: 0 0 0 2px #FFFFFF, 0 0 0 4px #1D1D1F;      /* light grounds and coloured sheets */
+  --nt-focus-on-ink: 0 0 0 2px #1D1D1F, 0 0 0 4px #FFC72C;
+
+  /* ---- Motion (maps to src/components/arc/motion-tokens.ts) ---- */
+  --nt-ease-enter:    cubic-bezier(0.16, 1, 0.3, 1);    /* motionTokens.ease.enter */
+  --nt-ease-exit:     cubic-bezier(0.7, 0, 0.84, 0);    /* ease.exit */
+  --nt-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);   /* ease.standard */
+  --nt-ease-out:      cubic-bezier(0.33, 1, 0.68, 1);   /* fly arc (ease-out cubic) */
+  --nt-dur-press: 90ms;
+  --nt-dur-instant: 120ms;   /* also the reduced-motion crossfade */
+  --nt-dur-lift: 160ms;
+  --nt-dur-stick: 140ms;
+  --nt-dur-standard: 240ms;
+  --nt-dur-page: 300ms;      /* Got page rise */
+  --nt-dur-fly: 420ms;
+  --nt-undo-ms: 6000;        /* pauses while the toast is hovered/focused */
+}
+
+@media (max-width: 767px) {
+  :root {
+    --nt-fs-profile-name: 22px;
+    --nt-fs-sheet-title: 32px;
+    --nt-fs-wordmark: 22px;
+    --nt-fs-tab: 14px;
+    --nt-fs-counter: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --nt-dur-lift: 0ms; --nt-dur-stick: 0ms; --nt-dur-fly: 0ms; --nt-dur-page: 120ms;
+    --nt-scale-lift: 1; --nt-scale-press: 1; --nt-rot-lift-delta: 0deg;
+  }
+}
+
+/* ---- Reference utility classes (optional; mirrors the kit) ---- */
+.nt-display { font-family: var(--nt-font-display); font-weight: 400; font-variation-settings: var(--nt-display-variation); letter-spacing: var(--nt-display-tracking); }
+.nt-num { font-family: var(--nt-font-num); font-variant-numeric: tabular-nums; }
+.nt-die { filter: var(--nt-sh-die); }
+.nt-photo-sticker { background: #fff; border-radius: var(--nt-r-photo-outer); padding: var(--nt-photo-pad); filter: var(--nt-sh-die); }
+.nt-photo-sticker > img { border-radius: var(--nt-r-photo-inner); display: block; }
+.nt-dot { border-radius: 999px; border: var(--nt-b-dot); box-shadow: var(--nt-sh-edge); font-family: var(--nt-font-num); font-weight: 700; display: grid; place-items: center; font-variant-numeric: tabular-nums; }

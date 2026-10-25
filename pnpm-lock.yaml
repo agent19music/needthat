@@ -8,6 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@fontsource-variable/funnel-display':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/funnel-sans':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/tilt-warp':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@imgly/background-removal':
         specifier: ^1.7.0
         version: 1.7.0(onnxruntime-web@1.21.0)
@@ -1004,6 +1013,15 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@fontsource-variable/funnel-display@5.3.0':
+    resolution: {integrity: sha512-o/12lyrfflx5QAQFa+hAl0uBeWoBUAm5w71j+KssBseo++XJT3tnveDSg5IAnAdiclQHfFuEZiL5Wn2BjuFxtw==}
+
+  '@fontsource-variable/funnel-sans@5.3.0':
+    resolution: {integrity: sha512-NOgHy3KWMAJdl33XSESit33nI8vlFZh8/0E3tLD7z5jJA5gQoLeUkFcZtxehVVkyYpAZ747tF8O/kAHXXa96ZA==}
+
+  '@fontsource-variable/tilt-warp@5.3.0':
+    resolution: {integrity: sha512-d7NZmCSpj2QCYrflzqwmh15Ijde/DSEiQxEKSkz1sTHi0748T+shGMtQph2f7lXi5iW8Mc9ygWW8aSpMsu3+PQ==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -5867,6 +5885,12 @@ snapshots:
       react-dom: 19.3.1(react@19.3.1)
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@fontsource-variable/funnel-display@5.3.0': {}
+
+  '@fontsource-variable/funnel-sans@5.3.0': {}
+
+  '@fontsource-variable/tilt-warp@5.3.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:
