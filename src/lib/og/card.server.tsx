@@ -59,24 +59,50 @@ export function warmShareCardForUser(userId: string) {
   )
 }
 
-export async function readOrRenderShareCard(username: string, origin: string) {
-  const profile = await loadPublicWishlist(username)
-  if (!profile || profile.items.length === 0) return null
-  const key = `g-${WIDTH}x${HEIGHT}-${profile.imageVersion}`
+/**
+ * Share card for a whole wishlist, or one sheet with `?sheet=<tag id>`.
+ * Only wanted stickers are drawn.
+ */
+export async function readOrRenderShareCard(
+  username: string,
+  origin: string,
+  sheetId?: string | null,
+) {
+  const loaded = await loadPublicWishlist(username)
+  if (!loaded) return null
+  const sheet = sheetId
+    ? (loaded.categories.find((category) => category.id === sheetId) ?? null)
+    : null
+  if (sheetId && !sheet) return null
+  const profile = {
+    ...loaded,
+    items: loaded.items.filter(
+      (item) =>
+        item.status !== 'purchased' && (!sheet || item.categoryId === sheet.id),
+    ),
+  }
+  if (profile.items.length === 0) return null
+  const key = `g-${WIDTH}x${HEIGHT}-${profile.imageVersion}${sheet ? `-${sheet.id}` : ''}`
   const cached = await getImageBucket().get(key)
   if (cached) return new Uint8Array(await cached.arrayBuffer())
-  const png = await drawCard(profile, origin)
+  const png = await drawCard(profile, origin, sheet?.name ?? null)
   await getImageBucket().put(key, png, {
     httpMetadata: { contentType: 'image/png' },
   })
   return png
 }
 
-async function drawCard(profile: PublicWishlist, origin: string) {
+async function drawCard(
+  profile: PublicWishlist,
+  origin: string,
+  sheetName: string | null,
+) {
   await ensureResvg()
-  const [regular, semibold] = await Promise.all([
-    loadFont(origin, '/fonts/pp-mori/PPMori-Regular.otf'),
-    loadFont(origin, '/fonts/pp-mori/PPMori-Semibold.otf'),
+  // Handoff TTFs (Bau Q8). resvg draws variable fonts at their default
+  // instance, so Tilt Warp here is not at XROT 24 (listed for Bau).
+  const [display, ui] = await Promise.all([
+    loadFont(origin, '/fonts/sticker/TiltWarp.ttf'),
+    loadFont(origin, '/fonts/sticker/FunnelSans.ttf'),
   ])
   const photos = (
     await Promise.all(
@@ -87,13 +113,13 @@ async function drawCard(profile: PublicWishlist, origin: string) {
     )
   ).filter((src): src is string => Boolean(src))
   const avatar = profile.image ? await imageDataUrl(profile.image) : null
-  const svg = cardSvg(profile, avatar, photos)
+  const svg = cardSvg(profile, avatar, photos, sheetName)
   const renderer = new Resvg(svg, {
     fitTo: { mode: 'width', value: WIDTH },
     font: {
-      fontBuffers: [new Uint8Array(regular), new Uint8Array(semibold)],
-      defaultFontFamily: 'PP Mori',
-      sansSerifFamily: 'PP Mori',
+      fontBuffers: [new Uint8Array(display), new Uint8Array(ui)],
+      defaultFontFamily: 'Funnel Sans',
+      sansSerifFamily: 'Funnel Sans',
     },
   })
   const rendered = renderer.render()
@@ -107,8 +133,12 @@ function cardSvg(
   profile: PublicWishlist,
   avatar: string | null,
   photos: Array<string>,
+  sheetName: string | null,
 ) {
-  const name = `${escapeXml(profile.name.trim() || profile.username)}'s wishlist`
+  const owner = escapeXml(profile.name.trim() || profile.username)
+  const name = sheetName
+    ? `${owner}'s #${escapeXml(sheetName)}`
+    : `${owner}'s wishlist`
   const frameWidth = 196
   const frameHeight = 148
   const gap = 28
@@ -144,10 +174,10 @@ function cardSvg(
     </filter>
   </defs>
   <rect width="${LAYOUT_WIDTH}" height="${LAYOUT_HEIGHT}" fill="#ffffff"/>
-  <text x="${LAYOUT_WIDTH / 2}" y="78" text-anchor="middle" dominant-baseline="hanging" fill="#111111" font-family="PP Mori" font-size="28">Sometimes, you just</text>
-  <text x="${LAYOUT_WIDTH / 2}" y="120" text-anchor="middle" dominant-baseline="hanging" fill="#111111" font-family="PP Mori" font-size="76" font-weight="600" letter-spacing="-2">#needthat</text>
+  <text x="${LAYOUT_WIDTH / 2}" y="78" text-anchor="middle" dominant-baseline="hanging" fill="#111111" font-family="Funnel Sans" font-size="28">Sometimes, you just</text>
+  <text x="${LAYOUT_WIDTH / 2}" y="120" text-anchor="middle" dominant-baseline="hanging" fill="#111111" font-family="Tilt Warp" font-size="76" letter-spacing="-2">#needthat</text>
   ${avatarMark}
-  <text x="${textX}" y="${nameY + (avatar ? 10 : 0)}" dominant-baseline="hanging" fill="#111111" font-family="PP Mori" font-size="${nameSize}">${name}</text>
+  <text x="${textX}" y="${nameY + (avatar ? 10 : 0)}" dominant-baseline="hanging" fill="#111111" font-family="Funnel Sans" font-size="${nameSize}">${name}</text>
   ${frames}
   </g>
 </svg>`
@@ -166,7 +196,7 @@ async function imageDataUrl(value: string | null) {
   try {
     if (value.startsWith('/api/images/')) {
       const key = value.slice('/api/images/'.length)
-      if (!/^[aocg]-[A-Za-z0-9-]{1,160}$/.test(key)) return null
+      if (!/^[aocgd]-[A-Za-z0-9-]{1,160}$/.test(key)) return null
       const object = await getImageBucket().get(key)
       if (!object || object.size > 1_500_000) return null
       const type = object.httpMetadata?.contentType ?? 'image/jpeg'

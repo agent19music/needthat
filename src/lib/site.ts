@@ -78,10 +78,14 @@ export function publicListHead(
     imageVersion: string
     items: Array<unknown>
   },
+  sheet: { id: string; name: string } | null = null,
 ) {
-  const path = `/u/${profile.username}`
+  const query = sheet ? `?sheet=${encodeURIComponent(sheet.id)}` : ''
+  const path = `/u/${profile.username}${query}`
   const url = origin ? `${origin}${path}` : undefined
-  const title = `${profile.name} on #needthat`
+  const title = sheet
+    ? `#${sheet.name} · ${profile.name} on #needthat`
+    : `${profile.name} on #needthat`
   const count = profile.items.length
   const description =
     count === 0
@@ -90,7 +94,7 @@ export function publicListHead(
   const dynamic = Boolean(origin) && count > 0
   const image = origin
     ? dynamic
-      ? `${origin}/api/og/u/${profile.username}?v=${profile.imageVersion}`
+      ? `${origin}/api/og/u/${profile.username}?${sheet ? `sheet=${encodeURIComponent(sheet.id)}&` : ''}v=${profile.imageVersion}`
       : `${origin}${shareImage.path}`
     : undefined
   const imageType = dynamic ? 'image/png' : shareImage.type
