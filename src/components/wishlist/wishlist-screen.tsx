@@ -33,7 +33,10 @@ import {
   reorderActiveItems,
   saveActiveItem,
 } from '#/lib/account-wishlist'
-import { StacksView } from '#/components/stacks/stacks-view'
+import { StickerBoard } from '#/components/sticker/board'
+import type { ShareSettings } from '#/components/sticker/share-sheet'
+import { nextTagColor } from '#/lib/sticker/sheets'
+import { loadShareSettings, saveShareSettings } from '#/lib/wishlist/account'
 import {
   nextPurchasedAt,
   sortByPosition,
@@ -74,17 +77,42 @@ export function WishlistScreen() {
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
   const [pendingRemoval, setPendingRemoval] = useState<GuestItem | null>(null)
-  const [layout, setLayout] = useState<Layout>('grid')
+  // Stacks is the Sticker Sheet board; Grid and List keep the old views.
+  const [layout, setLayout] = useState<Layout>('stacks')
+  const [shareSettings, setShareSettings] = useState<ShareSettings>({
+    showPrices: true,
+    allowClaims: true,
+  })
+  const [loadRun, setLoadRun] = useState(0)
   const removalTimer = useRef<number | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('wishlist-layout')
-    if (saved === 'list' || saved === 'stacks') setLayout(saved)
+    if (saved === 'list' || saved === 'grid') setLayout(saved)
   }, [])
 
   useEffect(() => {
     setOrigin(window.location.origin)
   }, [])
+
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+    loadShareSettings()
+      .then((result) => {
+        if (!cancelled && result.ok)
+          setShareSettings({
+            showPrices: result.showPrices,
+            allowClaims: result.allowClaims,
+          })
+      })
+      .catch(() => {
+        // Defaults stay; the toggles still save.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
 
   useEffect(() => {
     if (isPending) return
@@ -132,9 +160,7 @@ export function WishlistScreen() {
               return current
             const next = { ...existing, imageUrl: url, updatedAt: Date.now() }
             void saveActiveItem(signedInRef.current, next)
-            return current.map((entry) =>
-              entry.id === itemId ? next : entry,
-            )
+            return current.map((entry) => (entry.id === itemId ? next : entry))
           })
         },
       )
@@ -147,7 +173,7 @@ export function WishlistScreen() {
     return () => {
       cancelled = true
     }
-  }, [isPending, userId])
+  }, [isPending, userId, loadRun])
 
   useEffect(() => {
     return () => {
@@ -275,6 +301,66 @@ export function WishlistScreen() {
 
   const categoriesRef = useRef(categories)
   categoriesRef.current = categories
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+
+  /** Peel / Undo: optimistic, rolls back and throws so the board can say so. */
+  async function setGot(item: GuestItem, got: boolean) {
+    const current =
+      itemsRef.current.find((entry) => entry.id === item.id) ?? item
+    if ((current.status === 'purchased') === got) return
+    const now = Date.now()
+    const status = got ? 'purchased' : 'unresolved'
+    const next: GuestItem = {
+      ...current,
+      status,
+      purchasedAt: nextPurchasedAt(
+        { status: current.status, purchasedAt: current.purchasedAt ?? null },
+        status,
+        now,
+      ),
+      updatedAt: now,
+    }
+    setItems((list) =>
+      list.map((entry) => (entry.id === item.id ? next : entry)),
+    )
+    try {
+      await saveActiveItem(signedInRef.current, next)
+      setStorageError(null)
+    } catch (error) {
+      setItems((list) =>
+        list.map((entry) => (entry.id === item.id ? current : entry)),
+      )
+      throw error
+    }
+  }
+
+  async function printSticker(item: GuestItem) {
+    const placed: GuestItem = {
+      ...item,
+      position: topPosition(
+        itemsRef.current.map((entry) => entry.position ?? null),
+      ),
+    }
+    await saveActiveItem(signedInRef.current, placed)
+    setItems((current) =>
+      sortByPosition([
+        placed,
+        ...current.filter((entry) => entry.id !== placed.id),
+      ]),
+    )
+    setStorageError(null)
+  }
+
+  function changeShareSettings(next: ShareSettings) {
+    const previous = shareSettings
+    setShareSettings(next)
+    saveShareSettings({ data: next })
+      .then((result) => {
+        if (!result.ok) setShareSettings(previous)
+      })
+      .catch(() => setShareSettings(previous))
+  }
 
   async function createCategory(name: string) {
     const trimmed = name.trim()
@@ -290,6 +376,7 @@ export function WishlistScreen() {
     const category: GuestCategory = {
       id: crypto.randomUUID(),
       name: trimmed,
+      color: nextTagColor(categoriesRef.current),
       createdAt: Date.now(),
     }
     try {
@@ -370,246 +457,8 @@ export function WishlistScreen() {
     localStorage.setItem('wishlist-layout', next)
   }
 
-  return (
-    <div className="wishlist-page" data-layout={layout}>
-    <div className="wishlist-shell">
-      <nav className="category-nav" aria-label="Categories">
-        <p className="category-nav-label">Categories</p>
-        <button
-          type="button"
-          aria-current={selectedCategoryId === null ? 'page' : undefined}
-          onClick={() => setSelectedCategoryId(null)}
-        >
-          #all
-        </button>
-        {categories.map((category) => (
-          <button
-            key={category.id}
-            type="button"
-            aria-current={
-              selectedCategoryId === category.id ? 'page' : undefined
-            }
-            onClick={() => setSelectedCategoryId(category.id)}
-          >
-            {categoryTag(category.name)}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            setCategoryName('')
-            setCategoryError(null)
-            setCategoryOpen(true)
-          }}
-        >
-          New category
-        </button>
-      </nav>
-      <div className="category-menu">
-        <DropdownMenu
-          align="start"
-          label={
-            selectedCategory ? categoryTag(selectedCategory.name) : '#all'
-          }
-          items={[
-            {
-              label: '#all',
-              onSelect: () => setSelectedCategoryId(null),
-            },
-            ...categories.map((category) => ({
-              label: categoryTag(category.name),
-              onSelect: () => setSelectedCategoryId(category.id),
-            })),
-            {
-              label: 'New category',
-              separatorBefore: true,
-              onSelect: () => {
-                setCategoryName('')
-                setCategoryError(null)
-                setCategoryOpen(true)
-              },
-            },
-          ]}
-        />
-      </div>
-
-      <main>
-        <header className="mb-8 md:pe-28">
-          <h1>
-            <HeatWord />
-          </h1>
-          <p className="wishlist-note mt-3">
-            {signedIn
-              ? 'Saved to your account.'
-              : 'Saved on this browser. It is not backed up and will not appear on another device.'}
-          </p>
-          {signedIn && username && origin ? (
-            <div className="mt-4">
-              <CopyButton
-                value={`${origin}/u/${username}`}
-                label="Copy share link"
-              />
-            </div>
-          ) : null}
-          {signedIn && !username ? (
-            <p className="wishlist-note mt-3">
-              <Link to="/account">Choose a username</Link> to share this list.
-            </p>
-          ) : null}
-        </header>
-
-        {storageError ? (
-          <p role="alert" className="wishlist-alert">
-            {storageError}
-          </p>
-        ) : null}
-
-        <div className="grid gap-3">
-          <ProductSearch
-            id="describe"
-            value={query}
-            onChange={setQuery}
-            onSelect={(candidate) => {
-              openEditor(draftFromCandidate(candidate, selectedCategoryId))
-              setQuery('')
-            }}
-          />
-          {query.trim().length > 0 ? (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() =>
-                  openEditor(emptyDraft(query.trim(), selectedCategoryId))
-                }
-              >
-                Add details
-              </Button>
-            </div>
-          ) : null}
-        </div>
-
-        {ready && (visibleItems.length > 0 || layout === 'stacks') ? (
-          <div className="layout-switch-row">
-            <div className="layout-switch" role="group" aria-label="Layout">
-              <button
-                type="button"
-                aria-pressed={layout === 'grid'}
-                onClick={() => chooseLayout('grid')}
-              >
-                Grid
-              </button>
-              <button
-                type="button"
-                aria-pressed={layout === 'stacks'}
-                onClick={() => chooseLayout('stacks')}
-              >
-                Stacks
-              </button>
-              <button
-                type="button"
-                aria-pressed={layout === 'list'}
-                onClick={() => chooseLayout('list')}
-              >
-                List
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {layout === 'stacks' ? (
-          <StacksView
-            items={items}
-            categories={categories}
-            ready={ready}
-            selectedCategoryId={selectedCategoryId}
-            onSelectCategory={setSelectedCategoryId}
-            onToggleGot={togglePurchased}
-            onSave={async (item) => {
-              try {
-                await saveActiveItem(signedIn, item)
-                setItems((current) =>
-                  sortByPosition([
-                    item,
-                    ...current.filter((entry) => entry.id !== item.id),
-                  ]),
-                )
-                setStorageError(null)
-              } catch (error) {
-                setStorageError(messageFrom(error))
-                throw error
-              }
-            }}
-            onRemove={removeItem}
-            onReorder={async (ids) => {
-              const next = await reorderActiveItems(signedIn, items, ids)
-              setItems(sortByPosition(next))
-              setStorageError(null)
-            }}
-            onAdd={(categoryId) => {
-              if (categoryId) setSelectedCategoryId(categoryId)
-              document.getElementById('describe')?.focus()
-            }}
-            onNewCategory={() => {
-              setCategoryName('')
-              setCategoryError(null)
-              setCategoryOpen(true)
-            }}
-            onCreateCategory={createCategoryForStacks}
-            onChangeImage={(item) => openEditor(draftFromItem(item))}
-          />
-        ) : !ready ? (
-          <p className="wishlist-note mt-8">Loading your list…</p>
-        ) : visibleItems.length === 0 ? (
-          <div className="empty-state">
-            <img
-              src="/empty-state-needthat.webp"
-              alt=""
-              width={1684}
-              height={2528}
-            />
-            <div className="empty-state-copy">
-              <p className="empty-state-title">Hmm, nothing here yet</p>
-              <p className="empty-state-hint">
-                {selectedCategory
-                  ? `Nothing in ${categoryTag(selectedCategory.name)} yet.`
-                  : "Let's get your wishlist started"}
-              </p>
-            </div>
-          </div>
-        ) : layout === 'grid' ? (
-          <ul className="mt-8 grid grid-cols-2 items-stretch gap-x-4 gap-y-8 sm:grid-cols-3">
-            {visibleItems.map((item) => (
-              <li key={item.id} className="flex min-w-0">
-                <ItemCard
-                  item={item}
-                  onEdit={() => openEditor(draftFromItem(item))}
-                  onAskRemove={() => setConfirmItem(item)}
-                  onTogglePurchased={() => {
-                    void togglePurchased(item)
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <ul className="stamp-list">
-            {visibleItems.map((item, index) => (
-              <AlbumRow
-                key={item.id}
-                item={item}
-                tilt={index % 2 === 0 ? 'left' : 'right'}
-                onTogglePurchased={() => {
-                  void togglePurchased(item)
-                }}
-                onEdit={() => openEditor(draftFromItem(item))}
-                onAskRemove={() => setConfirmItem(item)}
-              />
-            ))}
-          </ul>
-        )}
-      </main>
-
+  const dialogs = (
+    <>
       <ItemEditor
         draft={editor}
         categories={categories}
@@ -703,7 +552,11 @@ export function WishlistScreen() {
               value={categoryName}
               error={categoryError ?? undefined}
               enterKeyHint="done"
-              start={<span className="category-hash" aria-hidden="true">#</span>}
+              start={
+                <span className="category-hash" aria-hidden="true">
+                  #
+                </span>
+              }
               onChange={(event) => setCategoryName(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter') return
@@ -759,7 +612,264 @@ export function WishlistScreen() {
           </button>
         </div>
       ) : null}
-    </div>
+    </>
+  )
+
+  if (layout === 'stacks') {
+    return (
+      <>
+        {storageError ? (
+          <p role="alert" className="nt-sr">
+            {storageError}
+          </p>
+        ) : null}
+        <StickerBoard
+          items={items}
+          categories={categories}
+          status={
+            !ready
+              ? 'loading'
+              : storageError && items.length === 0 && categories.length === 0
+                ? 'error'
+                : 'ready'
+          }
+          onRetry={() => {
+            setStorageError(null)
+            setLoadRun((run) => run + 1)
+          }}
+          user={
+            session?.user
+              ? {
+                  name: session.user.name,
+                  username: username || null,
+                  image: session.user.image ?? null,
+                }
+              : null
+          }
+          origin={origin}
+          layout={layout}
+          onLayout={chooseLayout}
+          settings={shareSettings}
+          onSettings={changeShareSettings}
+          onSetGot={setGot}
+          onPrint={printSticker}
+          onCreateCategory={createCategoryForStacks}
+          onReorder={async (ids) => {
+            const next = await reorderActiveItems(signedIn, items, ids)
+            setItems(sortByPosition(next))
+            setStorageError(null)
+          }}
+          onEdit={(item) => openEditor(draftFromItem(item))}
+          onDelete={(item) => setConfirmItem(item)}
+          onSearch={() => setCommandOpen(true)}
+          onSignOut={() => void authClient.signOut()}
+        />
+        {dialogs}
+      </>
+    )
+  }
+
+  return (
+    <div className="wishlist-page" data-layout={layout}>
+      <div className="wishlist-shell">
+        <nav className="category-nav" aria-label="Categories">
+          <p className="category-nav-label">Categories</p>
+          <button
+            type="button"
+            aria-current={selectedCategoryId === null ? 'page' : undefined}
+            onClick={() => setSelectedCategoryId(null)}
+          >
+            #all
+          </button>
+          {categories.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              aria-current={
+                selectedCategoryId === category.id ? 'page' : undefined
+              }
+              onClick={() => setSelectedCategoryId(category.id)}
+            >
+              {categoryTag(category.name)}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setCategoryName('')
+              setCategoryError(null)
+              setCategoryOpen(true)
+            }}
+          >
+            New category
+          </button>
+        </nav>
+        <div className="category-menu">
+          <DropdownMenu
+            align="start"
+            label={
+              selectedCategory ? categoryTag(selectedCategory.name) : '#all'
+            }
+            items={[
+              {
+                label: '#all',
+                onSelect: () => setSelectedCategoryId(null),
+              },
+              ...categories.map((category) => ({
+                label: categoryTag(category.name),
+                onSelect: () => setSelectedCategoryId(category.id),
+              })),
+              {
+                label: 'New category',
+                separatorBefore: true,
+                onSelect: () => {
+                  setCategoryName('')
+                  setCategoryError(null)
+                  setCategoryOpen(true)
+                },
+              },
+            ]}
+          />
+        </div>
+
+        <main>
+          <header className="mb-8 md:pe-28">
+            <h1>
+              <HeatWord />
+            </h1>
+            <p className="wishlist-note mt-3">
+              {signedIn
+                ? 'Saved to your account.'
+                : 'Saved on this browser. It is not backed up and will not appear on another device.'}
+            </p>
+            {signedIn && username && origin ? (
+              <div className="mt-4">
+                <CopyButton
+                  value={`${origin}/u/${username}`}
+                  label="Copy share link"
+                />
+              </div>
+            ) : null}
+            {signedIn && !username ? (
+              <p className="wishlist-note mt-3">
+                <Link to="/account">Choose a username</Link> to share this list.
+              </p>
+            ) : null}
+          </header>
+
+          {storageError ? (
+            <p role="alert" className="wishlist-alert">
+              {storageError}
+            </p>
+          ) : null}
+
+          <div className="grid gap-3">
+            <ProductSearch
+              id="describe"
+              value={query}
+              onChange={setQuery}
+              onSelect={(candidate) => {
+                openEditor(draftFromCandidate(candidate, selectedCategoryId))
+                setQuery('')
+              }}
+            />
+            {query.trim().length > 0 ? (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    openEditor(emptyDraft(query.trim(), selectedCategoryId))
+                  }
+                >
+                  Add details
+                </Button>
+              </div>
+            ) : null}
+          </div>
+
+          {ready ? (
+            <div className="layout-switch-row">
+              <div className="layout-switch" role="group" aria-label="Layout">
+                <button
+                  type="button"
+                  aria-pressed={layout === 'grid'}
+                  onClick={() => chooseLayout('grid')}
+                >
+                  Grid
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={false}
+                  onClick={() => chooseLayout('stacks')}
+                >
+                  Stacks
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={layout === 'list'}
+                  onClick={() => chooseLayout('list')}
+                >
+                  List
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {!ready ? (
+            <p className="wishlist-note mt-8">Loading your list…</p>
+          ) : visibleItems.length === 0 ? (
+            <div className="empty-state">
+              <img
+                src="/empty-state-needthat.webp"
+                alt=""
+                width={1684}
+                height={2528}
+              />
+              <div className="empty-state-copy">
+                <p className="empty-state-title">Hmm, nothing here yet</p>
+                <p className="empty-state-hint">
+                  {selectedCategory
+                    ? `Nothing in ${categoryTag(selectedCategory.name)} yet.`
+                    : "Let's get your wishlist started"}
+                </p>
+              </div>
+            </div>
+          ) : layout === 'grid' ? (
+            <ul className="mt-8 grid grid-cols-2 items-stretch gap-x-4 gap-y-8 sm:grid-cols-3">
+              {visibleItems.map((item) => (
+                <li key={item.id} className="flex min-w-0">
+                  <ItemCard
+                    item={item}
+                    onEdit={() => openEditor(draftFromItem(item))}
+                    onAskRemove={() => setConfirmItem(item)}
+                    onTogglePurchased={() => {
+                      void togglePurchased(item)
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="stamp-list">
+              {visibleItems.map((item, index) => (
+                <AlbumRow
+                  key={item.id}
+                  item={item}
+                  tilt={index % 2 === 0 ? 'left' : 'right'}
+                  onTogglePurchased={() => {
+                    void togglePurchased(item)
+                  }}
+                  onEdit={() => openEditor(draftFromItem(item))}
+                  onAskRemove={() => setConfirmItem(item)}
+                />
+              ))}
+            </ul>
+          )}
+        </main>
+
+        {dialogs}
+      </div>
     </div>
   )
 }
