@@ -7,19 +7,20 @@ import { getRequestUrl } from '@tanstack/react-start/server'
 import { getDb, getImageBucket } from '#/db/index'
 import { user } from '#/db/schema'
 import { isSafeImageUrl } from '#/lib/images/store-image.server'
+import { OG, OG_FONTS, imageAspect, ogContent, ogSvg } from '#/lib/og/og-layout'
+import type { OgSticker } from '#/lib/og/og-layout'
+import { stickerKind } from '#/lib/sticker/sheets'
 import { loadPublicWishlist } from '#/lib/wishlist/public.server'
 import type { PublicWishlist } from '#/lib/wishlist/types'
-
-const LAYOUT_WIDTH = 1024
-const LAYOUT_HEIGHT = 537
-const WIDTH = 1200
-const HEIGHT = 630
-const ANGLES = [-8, -3, 6, 12]
 
 let resvgReady: Promise<void> | undefined
 
 function ensureResvg() {
-  resvgReady ??= initWasm(resvgWasm)
+  // A module reload (dev HMR) keeps the wasm instance: "Already initialized".
+  resvgReady ??= initWasm(resvgWasm).catch((error: unknown) => {
+    if (!(error instanceof Error && /already initialized/i.test(error.message)))
+      throw error
+  })
   return resvgReady
 }
 
@@ -30,7 +31,8 @@ function loadFont(origin: string, path: string) {
   const cached = fontCache.get(url)
   if (cached) return cached
   const pending = fetch(url).then(async (response) => {
-    if (!response.ok) throw new Error('The share card font could not be loaded.')
+    if (!response.ok)
+      throw new Error('The share card font could not be loaded.')
     return response.arrayBuffer()
   })
   fontCache.set(url, pending)
@@ -59,41 +61,79 @@ export function warmShareCardForUser(userId: string) {
   )
 }
 
-export async function readOrRenderShareCard(username: string, origin: string) {
-  const profile = await loadPublicWishlist(username)
-  if (!profile || profile.items.length === 0) return null
-  const key = `g-${WIDTH}x${HEIGHT}-${profile.imageVersion}`
+/**
+ * B3·06 OG card for a whole wishlist, or one sheet with `?sheet=<tag id>`.
+ * Only wanted stickers are drawn; prices never are.
+ */
+export async function readOrRenderShareCard(
+  username: string,
+  origin: string,
+  sheetId?: string | null,
+) {
+  const loaded = await loadPublicWishlist(username)
+  if (!loaded) return null
+  const content = ogContent(loaded, sheetId ?? null)
+  if (!content) return null
+  const key = `o3-${OG.width}x${OG.height}-${loaded.imageVersion}${sheetId ? `-${sheetId}` : ''}`
   const cached = await getImageBucket().get(key)
   if (cached) return new Uint8Array(await cached.arrayBuffer())
-  const png = await drawCard(profile, origin)
+  const png = await drawCard(loaded, origin, content)
   await getImageBucket().put(key, png, {
     httpMetadata: { contentType: 'image/png' },
   })
   return png
 }
 
-async function drawCard(profile: PublicWishlist, origin: string) {
+async function drawCard(
+  profile: PublicWishlist,
+  origin: string,
+  content: NonNullable<ReturnType<typeof ogContent>>,
+) {
   await ensureResvg()
-  const [regular, semibold] = await Promise.all([
-    loadFont(origin, '/fonts/pp-mori/PPMori-Regular.otf'),
-    loadFont(origin, '/fonts/pp-mori/PPMori-Semibold.otf'),
-  ])
-  const photos = (
-    await Promise.all(
-      profile.items
-        .filter((item) => item.imageUrl)
-        .slice(0, 4)
-        .map((item) => imageDataUrl(item.imageUrl)),
-    )
-  ).filter((src): src is string => Boolean(src))
+  // r5: static instances of the handoff TTFs (see OG_FONTS).
+  const fonts = await Promise.all(
+    OG_FONTS.map((path) => loadFont(origin, path)),
+  )
+  const stickers: Array<OgSticker> = await Promise.all(
+    content.stickers.slice(0, 3).map(async (item) => {
+      const image = await imageData(item.imageUrl)
+      return {
+        id: item.id,
+        title: item.title,
+        kind: stickerKind(item.imageUrl),
+        src: image?.src ?? null,
+        aspect: image?.aspect ?? null,
+      }
+    }),
+  )
   const avatar = profile.image ? await imageDataUrl(profile.image) : null
-  const svg = cardSvg(profile, avatar, photos)
+  const svg = ogSvg({
+    name: profile.name.trim() || profile.username,
+    username: profile.username,
+    avatar,
+    countLine: content.countLine,
+    fill: content.fill,
+    tag: content.tag,
+    stickers: [
+      ...stickers,
+      // Only the count matters past the third ("+N").
+      ...content.stickers.slice(3).map((item) => ({
+        id: item.id,
+        title: item.title,
+        kind: 'none' as const,
+        src: null,
+        aspect: null,
+      })),
+    ],
+  })
   const renderer = new Resvg(svg, {
-    fitTo: { mode: 'width', value: WIDTH },
+    fitTo: { mode: 'width', value: OG.width },
     font: {
-      fontBuffers: [new Uint8Array(regular), new Uint8Array(semibold)],
-      defaultFontFamily: 'PP Mori',
-      sansSerifFamily: 'PP Mori',
+      fontBuffers: fonts.map((font) => new Uint8Array(font)),
+      // No system fallback: a missing family must not pass as Tilt Warp.
+      loadSystemFonts: false,
+      defaultFontFamily: 'Funnel Sans',
+      sansSerifFamily: 'Funnel Sans',
     },
   })
   const rendered = renderer.render()
@@ -103,84 +143,43 @@ async function drawCard(profile: PublicWishlist, origin: string) {
   return png
 }
 
-function cardSvg(
-  profile: PublicWishlist,
-  avatar: string | null,
-  photos: Array<string>,
-) {
-  const name = `${escapeXml(profile.name.trim() || profile.username)}'s wishlist`
-  const frameWidth = 196
-  const frameHeight = 148
-  const gap = 28
-  const rowWidth =
-    photos.length * frameWidth + Math.max(0, photos.length - 1) * gap
-  const startX = (LAYOUT_WIDTH - rowWidth) / 2
-  const frameY = LAYOUT_HEIGHT - 18 - frameHeight
-  const frames = photos
-    .map((src, index) => {
-      const x = startX + index * (frameWidth + gap)
-      const angle = ANGLES[index] ?? 0
-      return `<g transform="translate(${x + frameWidth / 2} ${frameY + frameHeight / 2}) rotate(${angle}) translate(${-frameWidth / 2} ${-frameHeight / 2})"><rect width="${frameWidth}" height="${frameHeight}" fill="#ffffff" filter="url(#shadow)"/><image x="8" y="8" width="180" height="132" href="${src}" preserveAspectRatio="xMidYMid slice"/></g>`
-    })
-    .join('')
-  const nameSize = 28
-  const avatarSize = 48
-  const textWidth = Math.ceil(name.length * nameSize * 0.52)
-  const groupWidth = (avatar ? avatarSize + 12 : 0) + textWidth
-  const groupX = (LAYOUT_WIDTH - groupWidth) / 2
-  const nameY = 214
-  const avatarMark = avatar
-    ? `<defs><clipPath id="avatar"><circle cx="${groupX + avatarSize / 2}" cy="${nameY + avatarSize / 2}" r="${avatarSize / 2}"/></clipPath></defs><image x="${groupX}" y="${nameY}" width="${avatarSize}" height="${avatarSize}" href="${avatar}" clip-path="url(#avatar)" preserveAspectRatio="xMidYMid slice"/>`
-    : ''
-  const textX = groupX + (avatar ? avatarSize + 12 : 0)
-  const scaleX = WIDTH / LAYOUT_WIDTH
-  const scaleY = HEIGHT / LAYOUT_HEIGHT
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-  <g transform="scale(${scaleX} ${scaleY})">
-  <defs>
-    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000000" flood-opacity="0.14"/>
-    </filter>
-  </defs>
-  <rect width="${LAYOUT_WIDTH}" height="${LAYOUT_HEIGHT}" fill="#ffffff"/>
-  <text x="${LAYOUT_WIDTH / 2}" y="78" text-anchor="middle" dominant-baseline="hanging" fill="#111111" font-family="PP Mori" font-size="28">Sometimes, you just</text>
-  <text x="${LAYOUT_WIDTH / 2}" y="120" text-anchor="middle" dominant-baseline="hanging" fill="#111111" font-family="PP Mori" font-size="76" font-weight="600" letter-spacing="-2">#needthat</text>
-  ${avatarMark}
-  <text x="${textX}" y="${nameY + (avatar ? 10 : 0)}" dominant-baseline="hanging" fill="#111111" font-family="PP Mori" font-size="${nameSize}">${name}</text>
-  ${frames}
-  </g>
-</svg>`
-}
-
-function escapeXml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
+async function imageData(value: string | null) {
+  const bytes = await imageBytes(value)
+  if (!bytes) return null
+  return {
+    src: toDataUrl(bytes.data, bytes.type),
+    aspect: imageAspect(bytes.data),
+  }
 }
 
 async function imageDataUrl(value: string | null) {
+  const bytes = await imageBytes(value)
+  return bytes ? toDataUrl(bytes.data, bytes.type) : null
+}
+
+async function imageBytes(
+  value: string | null,
+): Promise<{ data: Uint8Array; type: string } | null> {
   if (!value) return null
   try {
     if (value.startsWith('/api/images/')) {
       const key = value.slice('/api/images/'.length)
-      if (!/^[aocg]-[A-Za-z0-9-]{1,160}$/.test(key)) return null
+      if (!/^[aocgd]-[A-Za-z0-9-]{1,160}$/.test(key)) return null
       const object = await getImageBucket().get(key)
       if (!object || object.size > 1_500_000) return null
       const type = object.httpMetadata?.contentType ?? 'image/jpeg'
       if (!type.startsWith('image/')) return null
-      return toDataUrl(new Uint8Array(await object.arrayBuffer()), type)
+      return { data: new Uint8Array(await object.arrayBuffer()), type }
     }
     if (!isSafeImageUrl(value)) return null
     const response = await fetch(value, { signal: AbortSignal.timeout(8000) })
     if (!response.ok) return null
-    const type = response.headers.get('content-type')?.split(';')[0]?.trim() ?? ''
+    const type =
+      response.headers.get('content-type')?.split(';')[0]?.trim() ?? ''
     if (!type.startsWith('image/')) return null
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (bytes.byteLength === 0 || bytes.byteLength > 1_500_000) return null
-    return toDataUrl(bytes, type)
+    return { data: bytes, type }
   } catch {
     return null
   }

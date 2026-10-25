@@ -18,6 +18,20 @@ export function liftStudioBackdrop(
   width: number,
   height: number,
 ) {
+  const lifted = liftStudioBackdropFrame(source, width, height)
+  return lifted ? crop(lifted.data, width, height) : null
+}
+
+/**
+ * The same lift without the crop: full-frame RGBA with the backdrop at
+ * alpha 0. The sticker quality gate (cutout-gate.ts) needs the original
+ * frame to see which edges the product touches.
+ */
+export function liftStudioBackdropFrame(
+  source: Uint8ClampedArray,
+  width: number,
+  height: number,
+) {
   const area = width * height
   if (source.length !== area * 4 || width < SAMPLE * 2 || height < SAMPLE * 2)
     return null
@@ -74,7 +88,7 @@ export function liftStudioBackdrop(
     data[pixel * 4 + 3] = 0
   }
   bleed(data, width, height, 4)
-  return crop(data, width, height)
+  return { data, width, height }
 }
 
 export async function liftStudioBackdropBlob(blob: Blob) {
@@ -270,7 +284,12 @@ function bleed(
   }
 }
 
-function crop(data: Uint8ClampedArray, width: number, height: number) {
+export function crop(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  pad = 2,
+) {
   let minX = width
   let minY = height
   let maxX = -1
@@ -286,7 +305,6 @@ function crop(data: Uint8ClampedArray, width: number, height: number) {
   }
   if (maxX < 0) return null
 
-  const pad = 2
   minX = Math.max(0, minX - pad)
   minY = Math.max(0, minY - pad)
   maxX = Math.min(width - 1, maxX + pad)

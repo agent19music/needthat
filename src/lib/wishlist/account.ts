@@ -1,6 +1,17 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
+export const priceInput = z.object({
+  amount: z.number().int().nonnegative().max(1_000_000_000_00),
+  currency: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{3}$/)
+    .transform((value) => value.toUpperCase()),
+})
+
+export const tagColorInput = z.enum(['blue', 'green', 'red', 'white'])
+
 export const itemInput = z.object({
   id: z.string().trim().min(1).max(80),
   title: z.string().trim().min(1).max(200),
@@ -12,13 +23,15 @@ export const itemInput = z.object({
   imageUrl: z.string().trim().max(2000).nullable(),
   imageBase64: z.string().max(12_000_000).optional(),
   imageType: z.string().max(80).optional(),
+  price: priceInput.nullable().optional(),
   createdAt: z.number().int().positive(),
   updatedAt: z.number().int().positive(),
 })
 
-const categoryInput = z.object({
+export const categoryInput = z.object({
   id: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(40),
+  color: tagColorInput.nullable().optional(),
   createdAt: z.number().int().positive(),
 })
 
@@ -59,4 +72,38 @@ export const saveAccountCategory = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const { writeAccountCategory } = await import('./account.server')
     return writeAccountCategory(data)
+  })
+
+export const shareSettingsInput = z.object({
+  /** Category ids, '' for #unsorted. Share all sheets sends every sheet. */
+  sheetIds: z.array(z.string().max(80)).max(200),
+  showPrices: z.boolean().optional(),
+  allowClaims: z.boolean().optional(),
+  sharing: z.boolean().optional(),
+})
+
+export const loadShareSettings = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const { readShareSettings } = await import('./account.server')
+    return readShareSettings()
+  },
+)
+
+export const saveShareSettings = createServerFn({ method: 'POST' })
+  .validator(shareSettingsInput)
+  .handler(async ({ data }) => {
+    const { writeShareSettings } = await import('./account.server')
+    return writeShareSettings(data)
+  })
+
+export const profileInput = z.object({
+  bio: z.string().max(400),
+  forLine: z.string().max(100),
+})
+
+export const saveProfile = createServerFn({ method: 'POST' })
+  .validator(profileInput)
+  .handler(async ({ data }) => {
+    const { writeProfile } = await import('./account.server')
+    return writeProfile(data)
   })

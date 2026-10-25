@@ -11,19 +11,23 @@ import styles from '#/components/auth/auth.module.css'
 import { authMessage } from '#/lib/auth-message'
 import { authClient } from '#/lib/auth-client'
 import { getGoogleAuthReady } from '#/lib/auth-status'
+import { returnPath } from '#/lib/return-path'
 
 export const Route = createFileRoute('/sign-in')({
   head: () => ({
-    meta: [
-      { title: 'Sign in' },
-      { name: 'robots', content: 'noindex' },
-    ],
+    meta: [{ title: 'Sign in' }, { name: 'robots', content: 'noindex' }],
   }),
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    const next = returnPath(search.redirect)
+    return next ? { redirect: next } : {}
+  },
   component: SignInPage,
 })
 
 function SignInPage() {
   const navigate = useNavigate()
+  const { redirect } = Route.useSearch()
+  const next = redirect ?? '/'
   const { data: session } = authClient.useSession()
   const [identity, setIdentity] = useState('')
   const [password, setPassword] = useState('')
@@ -32,8 +36,8 @@ function SignInPage() {
   const [googleReady, setGoogleReady] = useState(false)
 
   useEffect(() => {
-    if (session?.user) void navigate({ to: '/' })
-  }, [navigate, session?.user])
+    if (session?.user) void navigate({ href: next })
+  }, [navigate, next, session?.user])
 
   useEffect(() => {
     let cancelled = false
@@ -58,19 +62,19 @@ function SignInPage() {
       ? await authClient.signIn.email({
           email: value,
           password,
-          callbackURL: '/',
+          callbackURL: next,
         })
       : await authClient.signIn.username({
           username: value,
           password,
-          callbackURL: '/',
+          callbackURL: next,
         })
     setLoading(false)
     if (result.error) {
       setError(authMessage(result.error, 'Sign in did not complete.'))
       return
     }
-    void navigate({ to: '/' })
+    void navigate({ href: next })
   }
 
   return (
@@ -109,7 +113,7 @@ function SignInPage() {
           onClick={() => {
             setError(null)
             void authClient.signIn
-              .social({ provider: 'google', callbackURL: '/' })
+              .social({ provider: 'google', callbackURL: next })
               .catch(() => {
                 setError('Google sign-in did not start.')
               })

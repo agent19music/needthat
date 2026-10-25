@@ -9,6 +9,7 @@ export {
   userRelations,
   verification,
 } from './auth-schema.ts'
+import { user } from './auth-schema.ts'
 import {
   index,
   integer,
@@ -32,6 +33,22 @@ export const lists = sqliteTable(
     id: text('id').primaryKey(),
     userId: text('user_id'),
     name: text('name').notNull().default('Wishlist'),
+    /**
+     * r7 (Q3 decided per sheet): these three now hold the settings for the
+     * #unsorted sheet only ("No sheet", no category row). Named sheets keep
+     * their own on `categories`.
+     */
+    sharePrices: integer('share_prices', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    shareClaims: integer('share_claims', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    /** r3 share "…" → Stop sharing (C101). Off: the public page shows nothing. */
+    shareOn: integer('share_on', { mode: 'boolean' }).notNull().default(true),
+    /** r7 (Q4): profile bio (C11) and the "FOR" kicker value (C12). */
+    bio: text('bio'),
+    forLine: text('for_line'),
     ...timestamps,
   },
   (table) => [index('lists_user_id_idx').on(table.userId)],
@@ -45,6 +62,16 @@ export const categories = sqliteTable(
       .notNull()
       .references(() => lists.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    /** Sheet colour. Null rows fall back to the blue → green → red cycle by creation order. */
+    color: text('color', { enum: ['blue', 'green', 'red', 'white'] }),
+    /** r7 (Q3): per-sheet Show prices / Friends can claim / sharing, all on for new sheets. */
+    sharePrices: integer('share_prices', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    shareClaims: integer('share_claims', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    shareOn: integer('share_on', { mode: 'boolean' }).notNull().default(true),
     createdAt: timestamps.createdAt,
   },
   (table) => [index('categories_list_id_idx').on(table.listId)],
@@ -106,7 +133,10 @@ export const listItems = sqliteTable(
   (table) => [
     index('list_items_list_id_idx').on(table.listId),
     index('list_items_list_position_idx').on(table.listId, table.position),
-    uniqueIndex('list_items_list_client_id_idx').on(table.listId, table.clientId),
+    uniqueIndex('list_items_list_client_id_idx').on(
+      table.listId,
+      table.clientId,
+    ),
   ],
 )
 
@@ -178,11 +208,32 @@ export const images = sqliteTable(
     sourceImageUrl: text('source_image_url'),
     contentType: text('content_type'),
     byteSize: integer('byte_size'),
-    role: text('role', { enum: ['original', 'processed'] }).notNull(),
+    /** `die` is the cut-out with the white sticker border baked in. */
+    role: text('role', { enum: ['original', 'processed', 'die'] }).notNull(),
     derivedFromId: text('derived_from_id'),
     createdAt: timestamps.createdAt,
   },
   (table) => [index('images_item_id_idx').on(table.itemId)],
+)
+
+/**
+ * One active claim per item ("I'll get this"). r7 (Q1 decided): the owner
+ * sees who claimed (C104/C105); other visitors only see that it's taken.
+ * Rows are kept while a sheet isn't shared (Addendum 3).
+ */
+export const claims = sqliteTable(
+  'claims',
+  {
+    id: text('id').primaryKey(),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => listItems.id, { onDelete: 'cascade' }),
+    claimerId: text('claimer_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamps.createdAt,
+  },
+  (table) => [uniqueIndex('claims_item_id_idx').on(table.itemId)],
 )
 
 export const lookupCache = sqliteTable(
@@ -207,7 +258,9 @@ export const providerUsage = sqliteTable(
     provider: text('provider').notNull(),
     operation: text('operation').notNull(),
     subjectKey: text('subject_key').notNull(),
-    cacheHit: integer('cache_hit', { mode: 'boolean' }).notNull().default(false),
+    cacheHit: integer('cache_hit', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     createdAt: timestamps.createdAt,
   },
   (table) => [

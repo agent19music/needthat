@@ -1,0 +1,1 @@
+ALTER TABLE `lists` ADD `share_on` integer DEFAULT true NOT NULL;

@@ -10,9 +10,12 @@ export const Route = createFileRoute('/api/og/u/$username')({
         if (!/^[a-z0-9_]{3,30}$/.test(username)) return fallback()
         try {
           const { readOrRenderShareCard } = await import('#/lib/og/card.server')
+          const requestUrl = new URL(request.url)
+          const sheet = requestUrl.searchParams.get('sheet')
           const png = await readOrRenderShareCard(
             username,
-            new URL(request.url).origin,
+            requestUrl.origin,
+            sheet && /^[A-Za-z0-9-]{1,80}$/.test(sheet) ? sheet : null,
           )
           if (!png) return fallback()
           const body = new ArrayBuffer(png.byteLength)

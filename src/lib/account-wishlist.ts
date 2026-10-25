@@ -6,7 +6,7 @@ import {
   saveGuestItem,
 } from '#/lib/guest-wishlist'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
-import type { StoredWishlistItem } from '#/lib/wishlist/types'
+import type { OwnerClaim, StoredWishlistItem } from '#/lib/wishlist/types'
 import { reassignPositions } from '#/lib/wishlist/order'
 import {
   deleteAccountItem,
@@ -24,7 +24,12 @@ export async function loadActiveWishlist(signedIn: boolean) {
       loadGuestItems(),
       loadGuestCategories(),
     ])
-    return { ok: true as const, items, categories }
+    return {
+      ok: true as const,
+      items,
+      categories,
+      claims: {} as Record<string, OwnerClaim>,
+    }
   }
   const loaded = await loadAccountWishlist()
   if (!loaded.ok) return loaded
@@ -32,6 +37,8 @@ export async function loadActiveWishlist(signedIn: boolean) {
     ok: true as const,
     items: loaded.items.map(toGuestItem),
     categories: loaded.categories,
+    // r7 (Q1): who claimed what, owner only.
+    claims: loaded.claims,
   }
 }
 
@@ -96,6 +103,7 @@ export async function saveActiveCategory(
     data: {
       id: category.id,
       name: category.name,
+      color: category.color ?? null,
       createdAt: category.createdAt,
     },
   })
@@ -113,6 +121,7 @@ export async function importGuestWishlist(userId: string) {
       data: {
         id: category.id,
         name: category.name,
+        color: category.color ?? null,
         createdAt: category.createdAt,
       },
     })
@@ -145,6 +154,7 @@ async function itemPayload(item: GuestItem) {
         : null,
     imageBase64: upload ? await blobToBase64(item.image as Blob) : undefined,
     imageType: upload ? (item.imageType ?? item.image?.type) : undefined,
+    price: item.price ?? null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   }

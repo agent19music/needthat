@@ -1,10 +1,14 @@
-import { ingestProductImage, storeCleanImage } from '#/lib/images/store-image'
+import { storeCleanImage } from '#/lib/images/store-image'
 import { liftStudioBackdropBlob } from '#/lib/images/studio-backdrop'
+import { printFromLink } from '#/lib/images/print-sticker'
 
+/**
+ * Editor saves: copy the photo and print it as a die sticker when the cut
+ * passes the quality gate, otherwise keep the copied photo.
+ */
 export async function cleanRemoteImage(itemId: string, imageUrl: string) {
-  const copied = await ingestProductImage({ data: { itemId, url: imageUrl } })
-  if (!copied.ok) return null
-  return (await cutout(itemId, copied.url)) ?? copied.url
+  const printed = await printFromLink(itemId, imageUrl)
+  return printed?.url ?? null
 }
 
 export async function recutStoredImage(itemId: string) {

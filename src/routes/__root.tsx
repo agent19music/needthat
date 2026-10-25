@@ -3,6 +3,7 @@ import {
   Scripts,
   createRootRouteWithContext,
 } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 
@@ -52,13 +53,6 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
     ],
     links: [
       {
-        rel: 'preload',
-        href: '/fonts/pp-mori/PPMori-Regular.woff2',
-        as: 'font',
-        type: 'font/woff2',
-        crossOrigin: 'anonymous',
-      },
-      {
         rel: 'stylesheet',
         href: arcCss,
       },
@@ -86,20 +80,37 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           <div className="flex-1">{children}</div>
           <SiteFooter />
         </div>
-        <TanStackDevtools
-          config={{
-            position: 'bottom-right',
-          }}
-          plugins={[
-            {
-              name: 'Tanstack Router',
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-            TanStackQueryDevtools,
-          ]}
-        />
+        <DevPanels />
         <Scripts />
       </body>
     </html>
+  )
+}
+
+/** Dev only, and off for screenshot runs (`?shots`) so it never covers the UI. */
+function DevPanels() {
+  const [shots, setShots] = useState(true)
+  useEffect(() => {
+    setShots(
+      new URLSearchParams(window.location.search).has('shots') ||
+        sessionStorage.getItem('nt-shots') === '1',
+    )
+    if (new URLSearchParams(window.location.search).has('shots'))
+      sessionStorage.setItem('nt-shots', '1')
+  }, [])
+  if (!import.meta.env.DEV || shots) return null
+  return (
+    <TanStackDevtools
+      config={{
+        position: 'bottom-right',
+      }}
+      plugins={[
+        {
+          name: 'Tanstack Router',
+          render: <TanStackRouterDevtoolsPanel />,
+        },
+        TanStackQueryDevtools,
+      ]}
+    />
   )
 }

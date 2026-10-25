@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 
 const WORD = '#needthat'
-const FONT = '800 52px "PP Mori", sans-serif'
+// Canvas can't set font-variation-settings, so this draws Tilt Warp at its default XROT.
+const FONT = '400 52px "Tilt Warp Variable", "Tilt Warp", sans-serif'
 
 export function HeatWord() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -31,8 +32,9 @@ export function HeatWord() {
 
       const paint = () => {
         const ink =
-          getComputedStyle(document.documentElement).getPropertyValue('--foreground').trim() ||
-          '#1c1c1a'
+          getComputedStyle(document.documentElement)
+            .getPropertyValue('--foreground')
+            .trim() || '#1c1c1a'
         context.setTransform(ratio, 0, 0, ratio, 0, 0)
         context.clearRect(0, 0, width, height)
         context.font = FONT
@@ -45,7 +47,14 @@ export function HeatWord() {
         context.fillText(WORD, 4, height / 2 + 1)
         if (reduce || !heat.active) return
         context.globalCompositeOperation = 'source-atop'
-        const gradient = context.createRadialGradient(heat.x, heat.y, 0, heat.x, heat.y, 64)
+        const gradient = context.createRadialGradient(
+          heat.x,
+          heat.y,
+          0,
+          heat.x,
+          heat.y,
+          64,
+        )
         gradient.addColorStop(0, '#fff7e8')
         gradient.addColorStop(0.42, '#ff6a00')
         gradient.addColorStop(1, 'rgba(255, 80, 0, 0)')
