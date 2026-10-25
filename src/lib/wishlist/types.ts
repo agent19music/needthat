@@ -62,6 +62,28 @@ export type PublicSticker = {
   claimed: boolean
   /** The signed-in viewer holds the claim. */
   claimedByMe: boolean
+  /**
+   * r7: false for a sticker on a sheet that isn't shared right now. Only its
+   * claimer ever gets one (Addendum 3: claims are kept while sharing is off).
+   */
+  shared: boolean
+}
+
+/** r7 (Q3 decided): one sheet's share settings. */
+export type SheetShare = {
+  showPrices: boolean
+  allowClaims: boolean
+  sharing: boolean
+}
+
+/** Key for the #unsorted sheet ("No sheet") in per-sheet settings maps. */
+export const UNSORTED_SHEET = ''
+
+/** r7 (Q1 decided): who claimed an owner's sticker, and when. */
+export type OwnerClaim = {
+  /** Claimer's display name, or null (C106 fallback). */
+  name: string | null
+  at: number
 }
 
 export type PublicWishlist = {
@@ -69,9 +91,14 @@ export type PublicWishlist = {
   name: string
   image: string | null
   imageVersion: string
-  /** Owner's share toggles (per list until Q7 is answered). */
+  /** r7: true when any shared sheet shows prices / allows claims. */
   showPrices: boolean
   allowClaims: boolean
+  /** r7 (Q4): profile bio (C11) and the FOR kicker value (C12). */
+  bio: string
+  forLine: string
+  /** r7: settings per sheet, by category id or UNSORTED_SHEET. */
+  sheets: Record<string, SheetShare>
   categories: Array<{
     id: string
     name: string

@@ -42,6 +42,8 @@ export async function renderStory(input: {
   total: string | null
   showPrices: boolean
   link: string
+  /** r9: the #all C98 line; replaces the C14 count line. */
+  countLine?: string
 }): Promise<Blob | null> {
   const canvas = document.createElement('canvas')
   canvas.width = STORY.width
@@ -122,7 +124,8 @@ export async function renderStory(input: {
   ctx.fillText(input.title, 26, 210)
   ctx.font = `600 15px ${ui}`
   ctx.fillText(
-    sheetMeta(input.items.length, input.showPrices ? input.total : null),
+    input.countLine ??
+      sheetMeta(input.items.length, input.showPrices ? input.total : null),
     28,
     252,
   )

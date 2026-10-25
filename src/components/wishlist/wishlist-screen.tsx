@@ -35,6 +35,8 @@ import {
 } from '#/lib/account-wishlist'
 import { StickerBoard } from '#/components/sticker/board'
 import type { ShareSettings } from '#/components/sticker/share-sheet'
+import type { OwnerClaim, SheetShare } from '#/lib/wishlist/types'
+import { DEFAULT_SHARE, shareForTarget } from '#/lib/wishlist/sheet-share'
 import { nextTagColor } from '#/lib/sticker/sheets'
 import { loadShareSettings, saveShareSettings } from '#/lib/wishlist/account'
 import {
@@ -79,11 +81,12 @@ export function WishlistScreen() {
   const [pendingRemoval, setPendingRemoval] = useState<GuestItem | null>(null)
   // Stacks is the Sticker Sheet board; Grid and List keep the old views.
   const [layout, setLayout] = useState<Layout>('stacks')
-  const [shareSettings, setShareSettings] = useState<ShareSettings>({
-    showPrices: true,
-    allowClaims: true,
-    sharing: true,
-  })
+  // r7 (Q3): Show prices / Friends can claim / sharing, per sheet.
+  const [sheetShares, setSheetShares] = useState<Record<string, SheetShare>>({})
+  const sheetSharesRef = useRef(sheetShares)
+  sheetSharesRef.current = sheetShares
+  const [claims, setClaims] = useState<Record<string, OwnerClaim>>({})
+  const [profile, setProfile] = useState({ bio: '', forLine: '' })
   const [loadRun, setLoadRun] = useState(0)
   const removalTimer = useRef<number | null>(null)
 
@@ -101,12 +104,10 @@ export function WishlistScreen() {
     let cancelled = false
     loadShareSettings()
       .then((result) => {
-        if (!cancelled && result.ok)
-          setShareSettings({
-            showPrices: result.showPrices,
-            allowClaims: result.allowClaims,
-            sharing: result.sharing,
-          })
+        if (!cancelled && result.ok) {
+          setSheetShares(result.sheets)
+          setProfile({ bio: result.bio, forLine: result.forLine })
+        }
       })
       .catch(() => {
         // Defaults stay; the toggles still save.
@@ -132,6 +133,7 @@ export function WishlistScreen() {
       }
       setItems(loaded.items)
       setCategories(loaded.categories)
+      setClaims(loaded.claims)
       setReady(true)
       setStorageError(null)
       if (userId) {
@@ -142,6 +144,7 @@ export function WishlistScreen() {
             if (!cancelled && refreshed.ok) {
               setItems(refreshed.items)
               setCategories(refreshed.categories)
+              setClaims(refreshed.claims)
             }
           }
         } catch (error) {
@@ -382,14 +385,50 @@ export function WishlistScreen() {
     setStorageError(null)
   }
 
-  function changeShareSettings(next: ShareSettings) {
-    const previous = shareSettings
-    setShareSettings(next)
-    saveShareSettings({ data: next })
+  /**
+   * Optimistic: writes only the switches that changed to every sheet in
+   * `keys`, so flipping one switch on Share all sheets never copies the
+   * other two across sheets. Reverts on failure. Reads the latest state
+   * through a ref, so a toast's Undo closure never diffs against stale data.
+   */
+  function changeShareSettings(keys: Array<string>, next: ShareSettings) {
+    const before = shareForTarget(sheetSharesRef.current, keys)
+    const patch: Partial<SheetShare> = {}
+    if (next.showPrices !== before.showPrices)
+      patch.showPrices = next.showPrices
+    if (next.allowClaims !== before.allowClaims)
+      patch.allowClaims = next.allowClaims
+    if (next.sharing !== undefined && next.sharing !== before.sharing)
+      patch.sharing = next.sharing
+    patchShareSettings(keys, patch)
+  }
+
+  /**
+   * r8: writes exactly `patch` to every sheet in `keys`. Stop sharing and
+   * its Undo use this, so they only ever touch `sharing` (Bau: never Show
+   * prices or Friends can claim).
+   */
+  function patchShareSettings(keys: Array<string>, patch: Partial<SheetShare>) {
+    if (keys.length === 0 || Object.keys(patch).length === 0) return
+    const previous = sheetSharesRef.current
+    const updated = { ...previous }
+    for (const key of keys)
+      updated[key] = { ...(previous[key] ?? DEFAULT_SHARE), ...patch }
+    sheetSharesRef.current = updated
+    setSheetShares(updated)
+    const revert = () => {
+      sheetSharesRef.current = previous
+      setSheetShares(previous)
+    }
+    saveShareSettings({ data: { sheetIds: keys, ...patch } })
       .then((result) => {
-        if (!result.ok) setShareSettings(previous)
+        if (!result.ok) revert()
+        else {
+          sheetSharesRef.current = result.sheets
+          setSheetShares(result.sheets)
+        }
       })
-      .catch(() => setShareSettings(previous))
+      .catch(revert)
   }
 
   async function createCategory(name: string) {
@@ -679,8 +718,11 @@ export function WishlistScreen() {
           origin={origin}
           layout={layout}
           onLayout={chooseLayout}
-          settings={shareSettings}
-          onSettings={changeShareSettings}
+          sheetShares={sheetShares}
+          onShareSettings={changeShareSettings}
+          onSharePatch={patchShareSettings}
+          claims={claims}
+          profile={userId ? profile : undefined}
           onSetGot={setGot}
           onPrint={printSticker}
           onCreateCategory={createCategoryForStacks}

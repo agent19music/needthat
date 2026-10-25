@@ -2,7 +2,15 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import * as Sentry from '@sentry/tanstackstart-react'
 
 import { getDb } from '#/db/index'
-import { categories, images, listItems, lists, offers } from '#/db/schema'
+import {
+  categories,
+  claims,
+  images,
+  listItems,
+  lists,
+  offers,
+  user,
+} from '#/db/schema'
 import {
   decodeImageBase64,
   isSafeImageUrl,
@@ -13,11 +21,14 @@ import type { GuestCategory } from '#/lib/guest-wishlist'
 import { cycleColor, isTagColor } from '#/lib/sticker/sheets'
 
 import type {
+  OwnerClaim,
   Price,
   SavedCategoryInput,
   SavedItemInput,
+  SheetShare,
   StoredWishlistItem,
 } from './types.ts'
+import { UNSORTED_SHEET } from './types.ts'
 import {
   latestPrices,
   nextPurchasedAt,
@@ -38,7 +49,13 @@ export async function readAccountWishlist() {
       }
     }
     const list = await findList(session.user.id)
-    if (!list) return { ok: true as const, items: [], categories: [] }
+    if (!list)
+      return {
+        ok: true as const,
+        items: [],
+        categories: [],
+        claims: {},
+      }
     const db = getDb()
     const [itemRows, categoryRows] = await Promise.all([
       db
@@ -57,12 +74,22 @@ export async function readAccountWishlist() {
         .orderBy(categories.createdAt),
     ])
     const prices = await readPrices(itemRows.map((row) => row.id))
+    const claimable = new Set(
+      itemRows
+        .filter((row) => {
+          if (row.status === 'purchased') return false
+          const sheet = categoryRows.find((cat) => cat.id === row.categoryId)
+          return sheet ? sheet.shareClaims : list.shareClaims
+        })
+        .map((row) => row.id),
+    )
     return {
       ok: true as const,
       items: itemRows.map((row) =>
         toGuestItem(row, prices.get(row.id) ?? null),
       ),
       categories: categoryRows.map(toGuestCategory),
+      claims: await readOwnerClaims([...claimable]),
     }
   })
 }
@@ -283,22 +310,78 @@ export async function reorderAccountItems(ids: Array<string>) {
   })
 }
 
-/** Share toggles for the owner's list (Q7 default: one setting per list). */
+/**
+ * r7 (Q1 decided): the owner sees who claimed each wanted sticker, kept
+ * while a sheet's sharing is off. Name is the claimer's display name, or
+ * null for the C106 fallback.
+ */
+async function readOwnerClaims(ids: Array<string>) {
+  const out: Record<string, OwnerClaim> = {}
+  for (let start = 0; start < ids.length; start += 90) {
+    const rows = await getDb()
+      .select({
+        itemId: claims.itemId,
+        createdAt: claims.createdAt,
+        name: user.name,
+      })
+      .from(claims)
+      .innerJoin(user, eq(user.id, claims.claimerId))
+      .where(inArray(claims.itemId, ids.slice(start, start + 90)))
+    for (const row of rows)
+      out[row.itemId] = {
+        name: row.name.trim() ? row.name.trim() : null,
+        at: row.createdAt.getTime(),
+      }
+  }
+  return out
+}
+
+/**
+ * r7 (Q3 decided): share switches per sheet, keyed by category id. The
+ * #unsorted sheet ("No sheet") keeps its settings on the list row.
+ */
 export async function readShareSettings() {
   const session = await readSession()
   if (!session) {
     return { ok: false as const, message: 'Sign in to change sharing.' }
   }
   const list = await findList(session.user.id)
+  return { ok: true as const, ...(await sheetSettings(list)) }
+}
+
+async function sheetSettings(list: typeof lists.$inferSelect | undefined) {
+  const sheets: Record<string, SheetShare> = {
+    [UNSORTED_SHEET]: {
+      showPrices: list?.sharePrices ?? true,
+      allowClaims: list?.shareClaims ?? true,
+      sharing: list?.shareOn ?? true,
+    },
+  }
+  if (list) {
+    const rows = await getDb()
+      .select()
+      .from(categories)
+      .where(eq(categories.listId, list.id))
+    for (const row of rows)
+      sheets[row.id] = {
+        showPrices: row.sharePrices,
+        allowClaims: row.shareClaims,
+        sharing: row.shareOn,
+      }
+  }
   return {
-    ok: true as const,
-    showPrices: list?.sharePrices ?? true,
-    allowClaims: list?.shareClaims ?? true,
-    sharing: list?.shareOn ?? true,
+    sheets,
+    bio: list?.bio ?? '',
+    forLine: list?.forLine ?? '',
   }
 }
 
+/**
+ * Writes one or more sheets' switches. `sheetIds` is the share target: one
+ * sheet, or every sheet for Share all sheets. UNSORTED_SHEET is #unsorted.
+ */
 export async function writeShareSettings(input: {
+  sheetIds: Array<string>
   showPrices?: boolean
   allowClaims?: boolean
   sharing?: boolean
@@ -309,21 +392,66 @@ export async function writeShareSettings(input: {
       return { ok: false as const, message: 'Sign in to change sharing.' }
     }
     const list = await ensureList(session.user.id)
-    const set: Partial<typeof lists.$inferInsert> = { updatedAt: new Date() }
+    const db = getDb()
+    const set: {
+      sharePrices?: boolean
+      shareClaims?: boolean
+      shareOn?: boolean
+    } = {}
     if (typeof input.showPrices === 'boolean')
       set.sharePrices = input.showPrices
     if (typeof input.allowClaims === 'boolean')
       set.shareClaims = input.allowClaims
     if (typeof input.sharing === 'boolean') set.shareOn = input.sharing
-    await getDb().update(lists).set(set).where(eq(lists.id, list.id))
-    const { warmShareCardForUser } = await import('#/lib/og/card.server')
-    warmShareCardForUser(session.user.id)
-    return {
-      ok: true as const,
-      showPrices: set.sharePrices ?? list.sharePrices,
-      allowClaims: set.shareClaims ?? list.shareClaims,
-      sharing: set.shareOn ?? list.shareOn,
+    const ids = [...new Set(input.sheetIds)]
+    if (Object.keys(set).length > 0) {
+      if (ids.includes(UNSORTED_SHEET))
+        await db
+          .update(lists)
+          .set({ ...set, updatedAt: new Date() })
+          .where(eq(lists.id, list.id))
+      const sheetIds = ids.filter((id) => id !== UNSORTED_SHEET)
+      if (sheetIds.length > 0)
+        await db
+          .update(categories)
+          .set(set)
+          .where(
+            and(
+              eq(categories.listId, list.id),
+              inArray(categories.id, sheetIds),
+            ),
+          )
+      const { warmShareCardForUser } = await import('#/lib/og/card.server')
+      warmShareCardForUser(session.user.id)
     }
+    const fresh = await findList(session.user.id)
+    return { ok: true as const, ...(await sheetSettings(fresh)) }
+  })
+}
+
+/** r7 (Q4): profile bio (C11) and FOR line (C12). */
+/** C11 70 characters; C12 12 for the value ("FOR" is extra). */
+export const BIO_MAX = 70
+export const FOR_MAX = 12
+
+export async function writeProfile(input: { bio: string; forLine: string }) {
+  return Sentry.startSpan({ name: 'Saving profile' }, async () => {
+    const session = await readSession()
+    if (!session) {
+      return { ok: false as const, message: 'Sign in to edit your profile.' }
+    }
+    const list = await ensureList(session.user.id)
+    const bio = input.bio.replace(/\s+/g, ' ').trim().slice(0, BIO_MAX)
+    const forLine = input.forLine.replace(/\s+/g, ' ').trim().slice(0, FOR_MAX)
+    await getDb()
+      .update(lists)
+      .set({
+        bio: bio || null,
+        forLine: forLine || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(lists.id, list.id))
+    return { ok: true as const, bio, forLine }
   })
 }
 

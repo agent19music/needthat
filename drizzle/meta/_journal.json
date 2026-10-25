@@ -43,6 +43,13 @@
       "when": 1792922545850,
       "tag": "0005_share_on",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792932537504,
+      "tag": "0006_sheet_sharing",
+      "breakpoints": true
     }
   ]
 }

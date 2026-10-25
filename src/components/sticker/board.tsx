@@ -15,18 +15,23 @@ import {
   CheckIcon,
   ClipboardTextIcon,
   ClockIcon,
+  CurrencyDollarIcon,
   HandPointingIcon,
+  InfoIcon,
   LinkIcon,
   ListIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusIcon,
+  RulerIcon,
   SignOutIcon,
   SortAscendingIcon,
   SortDescendingIcon,
   SquaresFourIcon,
   StackIcon,
-  UserIcon,
+  UserCircleIcon,
+  LockSimpleIcon,
+  DeviceMobileIcon,
   WarningCircleIcon,
 } from '@phosphor-icons/react'
 
@@ -43,7 +48,11 @@ import type {
   ShareTarget,
 } from '#/components/sticker/share-sheet'
 import { Sheet } from '#/components/sticker/sheet'
-import { KissCutFilters, nameInitials } from '#/components/sticker/sticker'
+import {
+  CoverNote,
+  KissCutFilters,
+  nameInitials,
+} from '#/components/sticker/sticker'
 import { burstTotalMs } from '#/components/sticker/motion'
 import {
   GOT_PAGE_SIZE,
@@ -62,6 +71,15 @@ import type { SheetFill, SortMode, TagSheet } from '#/lib/sticker/sheets'
 import { useOpened } from '#/lib/sticker/opened'
 import type { LayoutKind } from '#/lib/sticker/layout'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
+import {
+  shareFor,
+  shareForTarget,
+  sheetKey,
+  wasSharing,
+} from '#/lib/wishlist/sheet-share'
+import type { OwnerClaim, SheetShare } from '#/lib/wishlist/types'
+import { UNSORTED_SHEET } from '#/lib/wishlist/types'
+import { ownerCaption, ownerClaimLine } from '#/lib/sticker/claim-copy'
 
 export type BoardLayout = 'grid' | 'stacks' | 'list'
 
@@ -75,7 +93,12 @@ type Open =
   | { kind: 'item'; id: string }
   | { kind: 'got' }
   | { kind: 'print'; text: string; categoryId: string | null }
-  | { kind: 'share'; key: string | null }
+  | {
+      kind: 'share'
+      key: string | null
+      /** r7 C102: the sheet "Share all sheets" came from. */
+      from?: string
+    }
   | { kind: 'arrange'; key: string }
   | { kind: 'price'; id: string }
 
@@ -89,8 +112,17 @@ export type StickerBoardProps = {
   origin: string
   layout: BoardLayout
   onLayout: (layout: BoardLayout) => void
-  settings: ShareSettings
-  onSettings: (next: ShareSettings) => void
+  /** r7 (Q3): share switches per sheet, by category id or UNSORTED_SHEET. */
+  sheetShares: Readonly<Record<string, SheetShare>>
+  /** Writes `next` to every sheet in `keys` (one sheet, or all for #all). */
+  onShareSettings: (keys: Array<string>, next: ShareSettings) => void
+  /** r8: writes exactly `patch` to `keys`. Stop sharing and its Undo. */
+  onSharePatch?: (keys: Array<string>, patch: Partial<SheetShare>) => void
+  /** r7 (Q1): who claimed each wanted sticker. Owner only. */
+  claims?: Readonly<Record<string, OwnerClaim>>
+  /** r7 (Q4): cover note, FOR line (C12) and bio (C11). */
+  profile?: { bio: string; forLine: string }
+  onEditProfile?: () => void
   /** Optimistic: update the list first, persist, roll back and throw on failure. */
   onSetGot: (item: GuestItem, got: boolean) => Promise<void>
   onPrint: (item: GuestItem) => Promise<void>
@@ -211,15 +243,25 @@ export const SORT_OPTIONS: ReadonlyArray<{
   },
   {
     value: 'price-desc',
-    label: 'Price, high to low',
+    label: 'Price: high to low',
     icon: <SortDescendingIcon aria-hidden="true" />,
   },
   {
     value: 'price-asc',
-    label: 'Price, low to high',
+    label: 'Price: low to high',
     icon: <SortAscendingIcon aria-hidden="true" />,
   },
 ]
+
+/** C60 to C63: the guest cover. */
+const GUEST_TITLE = 'Your stickers'
+const GUEST_LINE = 'Saved on this device only'
+const GUEST_SIGN_IN = 'Sign in to save them'
+const GUEST_SHARING = 'Sharing needs an account'
+
+/** C29 / C35. */
+const SORT_TITLE = 'Sort stickers'
+const SORT_NOTE = 'Applies to all your sheets'
 
 export function sortLabel(mode: SortMode) {
   return (
@@ -544,24 +586,44 @@ export function StickerBoard(props: StickerBoardProps) {
     setOpen({ kind: 'print', text, categoryId })
   }
 
+  const allShareKeys = useMemo(
+    () => [UNSORTED_SHEET, ...categories.map((category) => category.id)],
+    [categories],
+  )
   const shareTarget = (key: string | null): ShareTarget => {
     const sheet = key ? sheetByCategory.get(key) : null
-    if (sheet)
+    if (sheet) {
+      const settings = shareFor(props.sheetShares, sheet.categoryId)
       return {
-        sheetId: sheet.categoryId,
+        // r7: #unsorted links to its own sheet, not the whole list.
+        sheetId: sheet.categoryId ?? (sheet.unsorted ? 'unsorted' : null),
+        keys: [sheetKey(sheet.categoryId)],
         tag: sheet.tag,
         fill: sheet.color,
         stickers: sheet.stickers,
-        total: sheet.total,
+        total: settings.showPrices ? sheet.total : null,
       }
+    }
     const all = items.filter((item) => item.status !== 'purchased')
+    const settings = shareForTarget(props.sheetShares, allShareKeys)
     return {
       sheetId: null,
+      keys: allShareKeys,
       tag: '#all',
       fill: 'blue',
       stickers: items,
-      total: formatTotal(all),
+      total: settings.showPrices ? formatTotal(all) : null,
     }
+  }
+  /** C14: count only on sheets with Show prices off (Q3). */
+  const pricesOn = (categoryId: string | null) =>
+    shareFor(props.sheetShares, categoryId).showPrices
+  /** r7 (Q1, C104): the owner's caption names the claimer. */
+  const ownerClaim = (item: GuestItem) => {
+    const claim = props.claims?.[item.id]
+    return claim && item.status !== 'purchased'
+      ? { claimed: true, mine: false, caption: ownerCaption(claim.name) }
+      : { claimed: false, mine: false }
   }
 
   const commonSheet = {
@@ -573,6 +635,7 @@ export function StickerBoard(props: StickerBoardProps) {
     peelable: true,
     onOpen: openItem,
     onPeel: (item: GuestItem, from: DOMRect) => void peel(item, from),
+    claimOf: ownerClaim,
   }
 
   const tabs = (
@@ -753,6 +816,12 @@ export function StickerBoard(props: StickerBoardProps) {
           setTab(key)
         }}
         shareTarget={shareTarget}
+        claimLine={(item) => {
+          const claim = props.claims?.[item.id]
+          return claim && item.status !== 'purchased'
+            ? ownerClaimLine(claim.name, claim.at, now)
+            : null
+        }}
         onToast={(message, undo) =>
           say({
             kind: 'info',
@@ -768,6 +837,7 @@ export function StickerBoard(props: StickerBoardProps) {
         topBar={
           <MobileTop
             user={user}
+            currency={pricedCurrency(items)}
             onHome={() => setOpen(null)}
             onSearch={props.onSearch}
             onSignOut={props.onSignOut}
@@ -805,9 +875,7 @@ export function StickerBoard(props: StickerBoardProps) {
     fill: 'yellow' as const,
     kicker: 'GOT PAGE',
     title: 'Got',
-    meta: sheetMeta(countedGot.length, formatTotal(countedGot), {
-      compact: true,
-    }),
+    meta: sheetMeta(countedGot.length, formatTotal(countedGot)),
     metaPill: countedGot.length > 0 ? gotCountLabel(countedGot, now) : null,
     stickers: sets.got.items,
     mode: 'got' as const,
@@ -832,6 +900,7 @@ export function StickerBoard(props: StickerBoardProps) {
         <KissCutFilters />
         <MobileTop
           user={user}
+          currency={pricedCurrency(items)}
           onSearch={props.onSearch}
           onSignOut={props.onSignOut}
         />
@@ -839,7 +908,7 @@ export function StickerBoard(props: StickerBoardProps) {
           <div className="nt-pr-id">
             <Avatar user={user} />
             <div style={{ minWidth: 0 }}>
-              <h2>{user?.name || 'Your sheet'}</h2>
+              <h2>{user ? user.name || 'Your sheet' : GUEST_TITLE}</h2>
               <p>
                 {user?.username ? (
                   <>
@@ -857,7 +926,10 @@ export function StickerBoard(props: StickerBoardProps) {
                 ) : user ? (
                   <Link to="/account">Choose a username</Link>
                 ) : (
-                  <Link to="/sign-in">Sign in</Link>
+                  <span className="nt-guest-line">
+                    <DeviceMobileIcon aria-hidden="true" />
+                    {GUEST_LINE}
+                  </span>
                 )}
               </p>
             </div>
@@ -909,9 +981,10 @@ export function StickerBoard(props: StickerBoardProps) {
                   fill={fillOf(sheet)}
                   kicker={sheetKicker(sheet.number)}
                   title={sheet.tag}
-                  meta={sheetMeta(sheet.wanted.length, sheet.total, {
-                    compact: true,
-                  })}
+                  meta={sheetMeta(
+                    sheet.wanted.length,
+                    pricesOn(sheet.categoryId) ? sheet.total : null,
+                  )}
                   variant="column"
                   stickers={sheet.stickers}
                   mode="board"
@@ -981,7 +1054,12 @@ export function StickerBoard(props: StickerBoardProps) {
               Print a sticker
             </button>
           ) : null}
-          <AccountButton user={user} onSignOut={props.onSignOut} size={42} />
+          <AccountButton
+            user={user}
+            onSignOut={props.onSignOut}
+            size={42}
+            currency={pricedCurrency(items)}
+          />
         </div>
       </header>
       <div className="nt-desk">
@@ -989,10 +1067,11 @@ export function StickerBoard(props: StickerBoardProps) {
           <div className="nt-cover">
             <Avatar user={user} />
             <div className="nt-cover-id">
-              <h1>{user?.name || 'Your sheet'}</h1>
+              <h1>{user ? user.name || 'Your sheet' : GUEST_TITLE}</h1>
               {user?.username ? (
                 <span className="nt-handle">@{user.username}</span>
               ) : null}
+              {user ? null : <p className="nt-guest-line">{GUEST_LINE}</p>}
             </div>
             <CoverStats
               want={wantCount}
@@ -1000,6 +1079,13 @@ export function StickerBoard(props: StickerBoardProps) {
               total={formatTotal(wanted)}
               onGot={() => openGot()}
             />
+            {user ? (
+              <CoverNote
+                bio={props.profile?.bio ?? ''}
+                forLine={props.profile?.forLine ?? ''}
+                prompt={<Link to="/account">Add a short bio</Link>}
+              />
+            ) : null}
             <div className="nt-actions">
               {user?.username ? (
                 <button
@@ -1020,9 +1106,23 @@ export function StickerBoard(props: StickerBoardProps) {
                   Edit
                 </Link>
               ) : (
-                <Link to="/sign-in" className="nt-pill" data-tone="ink">
-                  Sign in
-                </Link>
+                <>
+                  <Link
+                    to="/sign-in"
+                    className="nt-pill nt-guest-cta"
+                    data-tone="ink"
+                  >
+                    <UserCircleIcon aria-hidden="true" />
+                    {GUEST_SIGN_IN}
+                  </Link>
+                  <span
+                    className="nt-pill nt-guest-locked"
+                    aria-disabled="true"
+                  >
+                    <LockSimpleIcon aria-hidden="true" />
+                    {GUEST_SHARING}
+                  </span>
+                </>
               )}
             </div>
           </div>
@@ -1089,10 +1189,7 @@ export function StickerBoard(props: StickerBoardProps) {
                               title={sheet.tag}
                               meta={sheetMeta(
                                 sheet.wanted.length,
-                                sheet.total,
-                                {
-                                  compact: true,
-                                },
+                                pricesOn(sheet.categoryId) ? sheet.total : null,
                               )}
                               variant={cell.kind}
                               stickers={sheet.stickers}
@@ -1212,6 +1309,7 @@ function SortControl({
             align="center"
             sideOffset={8}
           >
+            <Menu.Label className="nt-sort-label">{SORT_TITLE}</Menu.Label>
             <Menu.RadioGroup
               value={value}
               onValueChange={(next) => {
@@ -1220,6 +1318,11 @@ function SortControl({
             >
               {options}
             </Menu.RadioGroup>
+            <Menu.Separator className="nt-dd-sep" />
+            <div className="nt-sort-note">
+              <InfoIcon aria-hidden="true" />
+              {SORT_NOTE}
+            </div>
           </Menu.Content>
         </Menu.Portal>
       </Menu.Root>
@@ -1231,10 +1334,18 @@ function SortControl({
         open={open}
         onClose={() => onOpen(false)}
         kind="bottom"
-        title="Sort"
+        title={SORT_TITLE}
       >
-        <div className="nt-sortsheet" role="radiogroup" aria-label="Sort">
+        <div className="nt-sort-label" data-sheet="true">
+          {SORT_TITLE}
+        </div>
+        <div className="nt-sortsheet" role="radiogroup" aria-label={SORT_TITLE}>
           {options}
+        </div>
+        <div className="nt-dd-sep" />
+        <div className="nt-sort-note">
+          <InfoIcon aria-hidden="true" />
+          {SORT_NOTE}
         </div>
       </Overlay>
     </>
@@ -1325,8 +1436,9 @@ function EmptyDesk({ onPrint }: { onPrint: () => void }) {
         ))}
       </div>
       <div className="nt-empty-copy">
-        <b>This is your sheet</b>
-        <p>Paste a link to print the first sticker.</p>
+        {/* C87 / C88. */}
+        <b>No stickers yet</b>
+        <p>Paste a link to something you want or search by name.</p>
         <button
           type="button"
           className="nt-cta"
@@ -1338,6 +1450,8 @@ function EmptyDesk({ onPrint }: { onPrint: () => void }) {
         </button>
         <span className="nt-paste-hint">
           <kbd>Ctrl V</kbd>
+          {/* C89. */}
+          Or paste a link anywhere
         </span>
       </div>
     </section>
@@ -1394,20 +1508,102 @@ export function Avatar({
   )
 }
 
+/**
+ * B2·06 account menu (r7, Q3): header (avatar, name, @handle), Profile
+ * (C80), Saved sizes (C81), Currency (C82, value on the right), divider,
+ * Sign out (C83). Sharing (C84) is gone: the switches live on each sheet.
+ * 1440 is a 260w dropdown; 390 (B2·06b) is a bottom sheet.
+ */
 function AccountButton({
   user,
   onSignOut,
   size,
+  currency,
+  sheet = false,
 }: {
   user: BoardUser | null
   onSignOut: () => void
   size: number
+  currency: string
+  /** 390: open as a bottom sheet. */
+  sheet?: boolean
 }) {
+  const [open, setOpen] = useState(false)
   if (!user)
     return (
       <Link to="/sign-in" className="nt-pill" data-tone="white">
         Sign in
       </Link>
+    )
+  const avatar = (
+    <Avatar
+      user={user}
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.34,
+        borderWidth: 3,
+      }}
+    />
+  )
+  const head = (
+    <div className="nt-acct-head">
+      <Avatar user={user} />
+      <div>
+        <b>{user.name}</b>
+        {user.username ? <small>@{user.username}</small> : null}
+      </div>
+    </div>
+  )
+  if (sheet)
+    return (
+      <>
+        <button
+          type="button"
+          aria-label="Account menu"
+          style={{ borderRadius: '50%' }}
+          onClick={() => setOpen(true)}
+        >
+          {avatar}
+        </button>
+        <Overlay
+          open={open}
+          onClose={() => setOpen(false)}
+          kind="bottom"
+          title="Account"
+          className="nt-acct-sheet"
+        >
+          {head}
+          <div className="nt-dd-sep" />
+          <nav className="nt-acct-list" aria-label="Account">
+            <Link to="/account" className="nt-acct-row">
+              <UserCircleIcon aria-hidden="true" />
+              Profile
+            </Link>
+            <span className="nt-acct-row" aria-disabled="true">
+              <RulerIcon aria-hidden="true" />
+              Saved sizes
+            </span>
+            <span className="nt-acct-row" aria-disabled="true">
+              <CurrencyDollarIcon aria-hidden="true" />
+              Currency
+              <span className="nt-acct-value">{currency}</span>
+            </span>
+            <div className="nt-dd-sep" />
+            <button
+              type="button"
+              className="nt-acct-row"
+              onClick={() => {
+                setOpen(false)
+                onSignOut()
+              }}
+            >
+              <SignOutIcon aria-hidden="true" />
+              Sign out
+            </button>
+          </nav>
+        </Overlay>
+      </>
     )
   return (
     <Menu.Root modal={false}>
@@ -1417,25 +1613,34 @@ function AccountButton({
           aria-label="Account menu"
           style={{ borderRadius: '50%' }}
         >
-          <Avatar
-            user={user}
-            style={{
-              width: size,
-              height: size,
-              fontSize: size * 0.34,
-              borderWidth: 3,
-            }}
-          />
+          {avatar}
         </button>
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Content className="nt-layer nt-dd" align="end" sideOffset={8}>
+        <Menu.Content
+          className="nt-layer nt-dd nt-acct"
+          align="end"
+          sideOffset={8}
+        >
+          {head}
+          <Menu.Separator className="nt-dd-sep" />
           <Menu.Item className="nt-dd-item" asChild>
             <Link to="/account">
-              <UserIcon aria-hidden="true" />
-              Account
+              <UserCircleIcon aria-hidden="true" />
+              Profile
             </Link>
           </Menu.Item>
+          {/* r7: Saved sizes and Currency have no screen yet (flagged). */}
+          <Menu.Item className="nt-dd-item" disabled>
+            <RulerIcon aria-hidden="true" />
+            Saved sizes
+          </Menu.Item>
+          <Menu.Item className="nt-dd-item" disabled>
+            <CurrencyDollarIcon aria-hidden="true" />
+            Currency
+            <span className="nt-acct-value">{currency}</span>
+          </Menu.Item>
+          <Menu.Separator className="nt-dd-sep" />
           <Menu.Item className="nt-dd-item" onSelect={onSignOut}>
             <SignOutIcon aria-hidden="true" />
             Sign out
@@ -1451,8 +1656,10 @@ function MobileTop({
   onSearch,
   onSignOut,
   onHome,
+  currency,
 }: {
   user: BoardUser | null
+  currency: string
   onSearch: () => void
   onSignOut: () => void
   onHome?: () => void
@@ -1482,7 +1689,13 @@ function MobileTop({
         >
           <MagnifyingGlassIcon aria-hidden="true" />
         </button>
-        <AccountButton user={user} onSignOut={onSignOut} size={44} />
+        <AccountButton
+          user={user}
+          onSignOut={onSignOut}
+          size={44}
+          currency={currency}
+          sheet
+        />
       </div>
     </header>
   )
@@ -1583,8 +1796,12 @@ export function BlankSheet({
         className="nt-blank-copy"
         style={{ top: compact ? '62cqw' : '116cqw' }}
       >
-        <b>{first ? 'This is your sheet' : `${tag} is a blank sheet`}</b>
-        <p>Paste a link to print the first sticker.</p>
+        <b>{first ? 'No stickers yet' : `${tag} is a blank sheet`}</b>
+        <p>
+          {first
+            ? 'Paste a link to something you want or search by name.'
+            : 'Paste a link to print the first sticker.'}
+        </p>
         {compact ? null : (
           <button
             type="button"
@@ -1666,6 +1883,10 @@ function Overlays(
     onCopyLink: (item: GuestItem) => void
     onSeeSheet: (key: string) => void
     shareTarget: (key: string | null) => ShareTarget
+    sheetShares: Readonly<Record<string, SheetShare>>
+    onShareSettings: (keys: Array<string>, next: ShareSettings) => void
+    onSharePatch?: (keys: Array<string>, patch: Partial<SheetShare>) => void
+    claimLine: (item: GuestItem) => string | null
     onToast: (message: string, undo?: () => void) => void
     topBar: ReactNode
   },
@@ -1748,6 +1969,7 @@ function Overlays(
             }
             onCopyLink={props.onCopyLink}
             onPrintSticker={printSticker}
+            claimLine={props.claimLine(item)}
             wide={props.wide}
           />
         ) : null}
@@ -1830,11 +2052,42 @@ function Overlays(
             name={props.user.name}
             origin={props.origin}
             now={props.now}
-            settings={props.settings}
-            onSettings={props.onSettings}
+            settings={shareForTarget(
+              props.sheetShares,
+              props.shareTarget(open.key).keys,
+            )}
+            onSettings={(next) =>
+              props.onShareSettings(props.shareTarget(open.key).keys, next)
+            }
+            onStop={
+              props.onSharePatch
+                ? () => {
+                    const patch = props.onSharePatch
+                    if (!patch) return () => {}
+                    const keys = props.shareTarget(open.key).keys
+                    const was = wasSharing(props.sheetShares, keys)
+                    patch(keys, { sharing: false })
+                    return () => patch(was, { sharing: true })
+                  }
+                : undefined
+            }
             onClose={close}
             onToast={props.onToast}
-            onShareAll={() => props.setOpen({ kind: 'share', key: null })}
+            onShareAll={
+              open.key === null
+                ? undefined
+                : () =>
+                    props.setOpen({
+                      kind: 'share',
+                      key: null,
+                      from: open.key ?? undefined,
+                    })
+            }
+            onOnlySheet={
+              open.key === null && open.from !== undefined
+                ? () => props.setOpen({ kind: 'share', key: open.from ?? null })
+                : undefined
+            }
             wide={props.wide}
           />
         ) : null}

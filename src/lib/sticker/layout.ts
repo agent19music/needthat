@@ -84,6 +84,8 @@ export const Z1 = {
   captionGap: 10,
   /** Two caption lines (12/1.25 + 11 sub) ≈ 40. */
   captionH: 40,
+  /** r8: the two lines as rendered (12/1.25 title + 11/1.3 sub) ≈ 29. */
+  captionTextH: 29,
   cellGap: 16,
   hintReserve: 40,
   fabReserve: 76,
@@ -197,6 +199,8 @@ type ZigOptions = {
   fixedHeight?: number
   capacity?: number
   bottomReserve: number
+  /** r8: measure the bottom from the caption text (390 public column). */
+  textBottom?: boolean
 }
 
 /**
@@ -279,9 +283,12 @@ function zig(
       size: MORE_SIZE,
     }
   }
+  // r8 (minor 12): the 390 public column's §2 bottom measures from the
+  // caption's text, not its 40px box (1440 keeps the r3 box + 32 rule).
+  const textSlack = o.textBottom ? Z1.captionH - Z1.captionTextH : 0
   const contentBottom = Math.max(
     o.headBottom,
-    ...bottoms,
+    ...bottoms.map((value) => value - textSlack),
     more ? more.y + more.size + 8 : 0,
   )
   return {
@@ -438,7 +445,7 @@ function wall(
 export function planSheet(
   kind: LayoutKind,
   items: ReadonlyArray<LayoutInput>,
-  options: { fab?: boolean; hint?: boolean } = {},
+  options: { fab?: boolean; hint?: boolean; textBottom?: boolean } = {},
 ): Plan {
   const plan = planKind(kind, items, options)
   // r3 #4: sheets hug their content; only an empty one keeps its design height.
@@ -451,7 +458,7 @@ export function planSheet(
 function planKind(
   kind: LayoutKind,
   items: ReadonlyArray<LayoutInput>,
-  options: { fab?: boolean; hint?: boolean },
+  options: { fab?: boolean; hint?: boolean; textBottom?: boolean },
 ): Plan {
   switch (kind) {
     case 'column':
@@ -467,6 +474,9 @@ function planKind(
         lowPill: kind === 'got-column',
         dot: Z1.dot,
         star: Z1.star,
+        // r8: the public column only; the owner's hint row needs the full
+        // caption box above it.
+        textBottom: options.textBottom === true,
         // §2: max caption bottom + 40 + 76 (40 only without a FAB).
         bottomReserve:
           (options.hint === false && options.fab === false

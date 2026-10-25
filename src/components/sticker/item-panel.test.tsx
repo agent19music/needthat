@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 
 import { ItemPanel } from './item-panel'
 import { item } from '../../../test/fixtures'
+import { MONTHS } from '../../lib/sticker/sheets'
 
 const shoe = item({
   id: 'shoe',
@@ -77,7 +78,7 @@ describe('ItemPanel overflow (B2·04, 1440)', () => {
       'Edit details',
       'Edit price',
       'Move to sheet',
-      'Copy link',
+      'Copy item link',
       'Arrange sheet',
       'Remove',
     ])
@@ -104,7 +105,7 @@ describe('ItemPanel overflow (B2·04, 1440)', () => {
     expect(calls.onMove).toHaveBeenCalledWith(shoe, 'home')
   })
 
-  it('Edit price and Copy link call through', async () => {
+  it('Edit price and Copy item link call through', async () => {
     const calls = setup(true)
     const more = () =>
       fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), {
@@ -116,7 +117,9 @@ describe('ItemPanel overflow (B2·04, 1440)', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit price' }))
     expect(calls.onEditPrice).toHaveBeenCalledWith(shoe)
     more()
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy link' }))
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Copy item link' }),
+    )
     expect(calls.onCopyLink).toHaveBeenCalledWith(shoe)
   })
 
@@ -149,24 +152,27 @@ describe('ItemPanel overflow (B2·04, 1440)', () => {
 })
 
 describe('ItemPanel overflow (B2·05, 390)', () => {
-  it('opens the sheet with the shared item menu, minus Remove and Mark as got (own buttons)', async () => {
-    setup(false)
+  it('opens the sheet with the shared item menu, Remove last (r9, B2·05)', async () => {
+    const calls = setup(false)
     fireEvent.click(screen.getByRole('button', { name: 'More' }))
     const menu = await screen.findByRole('menu', { name: 'More' })
     const names = within(menu)
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent.trim())
+    // r8 (Bau): Edit details leads the 390 menu too, matching 1440.
     expect(names).toEqual([
+      'Edit details',
       'Edit price',
       'Move to sheet',
-      'Copy link',
+      'Copy item link',
       'Arrange sheet',
+      'Remove',
     ])
-    expect(within(menu).queryByRole('menuitem', { name: 'Remove' })).toBeNull()
-    // The pencil in the 390 bar is Edit details.
-    expect(
-      within(menu).queryByRole('menuitem', { name: 'Edit details' }),
-    ).toBeNull()
+    // r9: the rows scroll inside the sheet; the header stays outside.
+    expect(menu).toHaveClass('nt-ovf-list')
+    expect(menu.closest('.nt-ovf-sheet')).not.toBeNull()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove' }))
+    expect(calls.onDelete).toHaveBeenCalledTimes(1)
     expect(
       screen.getByRole('button', { name: 'Delete sticker', hidden: true }),
     ).toBeInTheDocument()
@@ -182,6 +188,15 @@ describe('ItemPanel overflow (B2·05, 390)', () => {
     expect(
       screen.getByRole('button', { name: /Peel off/, hidden: true }),
     ).toBeInTheDocument()
+  })
+
+  it('r8: Edit details leads the 390 sheet and calls through', async () => {
+    const calls = setup(false)
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Edit details' }),
+    )
+    expect(calls.onEdit).toHaveBeenCalledWith(shoe)
   })
 
   it('Edit price calls through and closes the sheet', async () => {
@@ -212,7 +227,7 @@ describe('ItemPanel overflow (B2·05, 390)', () => {
       const today = new Date()
       today.setHours(12)
       setup(wide, { ...shoe, createdAt: today.getTime() })
-      const day = `${today.getDate()} ${today.toLocaleString('en-GB', { month: 'short' })}`
+      const day = `${today.getDate()} ${MONTHS[today.getMonth()]}`
       expect(
         screen.getByText(/^Added/, { selector: '.nt-chip' }),
       ).toHaveTextContent(new RegExp(`^Added ?${day}$`))

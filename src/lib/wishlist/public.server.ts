@@ -5,14 +5,18 @@ import { getDb } from '#/db/index'
 import { categories, claims, listItems, lists, offers, user } from '#/db/schema'
 
 import { latestPrices } from './order.ts'
-import type { Price, PublicWishlist } from './types.ts'
+import { anyShared, shareFor } from './sheet-share.ts'
+import type { Price, PublicWishlist, SheetShare } from './types.ts'
+import { UNSORTED_SHEET } from './types.ts'
 
 type Viewer = { id: string } | null
 
 /**
- * Everything a visitor may see on a shared sheet. Prices only when the owner
- * shows them; claims only as "taken" (Q3 default: nobody sees who), and the
- * owner never learns which items are claimed.
+ * Everything a visitor may see. r7 (Q3 decided): every sheet has its own
+ * Show prices / Friends can claim / sharing. Stickers on a sheet that isn't
+ * shared are left out, except the viewer's own claims (Addendum 3: claims
+ * are kept while sharing is off), which come back with `shared: false`.
+ * Visitors only see that an item is claimed, never who (Q1).
  */
 export async function loadPublicWishlist(
   username: string,
@@ -31,36 +35,70 @@ export async function loadPublicWishlist(
       .from(lists)
       .where(eq(lists.userId, person.id))
       .get()
-    const showPrices = list?.sharePrices ?? true
-    const allowClaims = list?.shareClaims ?? true
-    // r3 Stop sharing: the page stays (Q7 open) but shows nothing shared.
-    const sharing = list?.shareOn ?? true
     const isOwner = viewer?.id === person.id
-    const rows =
-      list && sharing
-        ? await db
-            .select()
-            .from(listItems)
-            .where(eq(listItems.listId, list.id))
-            .orderBy(desc(listItems.createdAt))
-        : []
-    const categoryRows =
-      list && sharing
-        ? await db
-            .select()
-            .from(categories)
-            .where(eq(categories.listId, list.id))
-            .orderBy(categories.createdAt)
-        : []
-    const ids = rows.map((row) => row.id)
-    const prices = showPrices ? await readPrices(ids) : new Map<string, Price>()
-    const claimRows = allowClaims && !isOwner ? await readClaims(ids) : []
+    const allRows = list
+      ? await db
+          .select()
+          .from(listItems)
+          .where(eq(listItems.listId, list.id))
+          .orderBy(desc(listItems.createdAt))
+      : []
+    const allCategories = list
+      ? await db
+          .select()
+          .from(categories)
+          .where(eq(categories.listId, list.id))
+          .orderBy(categories.createdAt)
+      : []
+    const sheets: Record<string, SheetShare> = {
+      [UNSORTED_SHEET]: {
+        showPrices: list?.sharePrices ?? true,
+        allowClaims: list?.shareClaims ?? true,
+        sharing: list?.shareOn ?? true,
+      },
+    }
+    for (const row of allCategories)
+      sheets[row.id] = {
+        showPrices: row.sharePrices,
+        allowClaims: row.shareClaims,
+        sharing: row.shareOn,
+      }
+    // A sticker whose category row is gone renders on #unsorted.
+    const known = new Set(allCategories.map((row) => row.id))
+    const settingOf = (categoryId: string | null) =>
+      shareFor(sheets, categoryId && known.has(categoryId) ? categoryId : null)
+    const allIds = allRows.map((row) => row.id)
+    const claimRows = await readClaims(allIds)
     const claimedBy = new Map(
       claimRows.map((row) => [row.itemId, row.claimerId]),
     )
+    const rows = allRows.filter((row) => {
+      const setting = settingOf(row.categoryId)
+      if (setting.sharing) return true
+      // Unshared sheet: only the claimer's own wanted stickers come through.
+      return (
+        !isOwner &&
+        setting.allowClaims &&
+        Boolean(viewer) &&
+        row.status !== 'purchased' &&
+        claimedBy.get(row.id) === viewer?.id
+      )
+    })
+    const usedCategories = new Set(rows.map((row) => row.categoryId))
+    const categoryRows = allCategories.filter(
+      (row) =>
+        (row.id in sheets && sheets[row.id].sharing) ||
+        usedCategories.has(row.id),
+    )
+    const priced = rows
+      .filter((row) => settingOf(row.categoryId).showPrices)
+      .map((row) => row.id)
+    const prices = await readPrices(priced)
     const items = rows.map((row) => {
-      const claimer = claimedBy.get(row.id)
+      const setting = settingOf(row.categoryId)
       const purchased = row.status === 'purchased'
+      const claimer =
+        setting.allowClaims && !isOwner ? claimedBy.get(row.id) : undefined
       return {
         id: row.id,
         title: row.title,
@@ -73,12 +111,18 @@ export async function loadPublicWishlist(
         purchasedAt: purchased
           ? (row.purchasedAt?.getTime() ?? row.updatedAt.getTime())
           : null,
-        price: prices.get(row.id) ?? null,
+        price: setting.showPrices ? (prices.get(row.id) ?? null) : null,
         createdAt: row.createdAt.getTime(),
         claimed: Boolean(claimer) && !purchased,
         claimedByMe: Boolean(claimer) && claimer === viewer?.id && !purchased,
+        shared: setting.sharing,
       }
     })
+    const sharedKeys = Object.keys(sheets).filter((key) => sheets[key].sharing)
+    const showPrices = anyShared(sheets, sharedKeys, 'showPrices')
+    const allowClaims = anyShared(sheets, sharedKeys, 'allowClaims')
+    const bio = list?.bio?.trim() ?? ''
+    const forLine = list?.forLine?.trim() ?? ''
     const digest = await crypto.subtle.digest(
       'SHA-256',
       new TextEncoder().encode(
@@ -86,17 +130,18 @@ export async function loadPublicWishlist(
           username: person.username,
           name: person.name,
           image: person.image,
-          showPrices,
-          sharing,
+          sheets,
           categories: categoryRows.map((row) => [row.id, row.name, row.color]),
-          items: items.map((item) => [
-            item.id,
-            item.imageUrl,
-            item.title,
-            item.status,
-            item.categoryId,
-            item.price?.amount ?? null,
-          ]),
+          items: items
+            .filter((item) => item.shared)
+            .map((item) => [
+              item.id,
+              item.imageUrl,
+              item.title,
+              item.status,
+              item.categoryId,
+              item.price?.amount ?? null,
+            ]),
         }),
       ),
     )
@@ -111,6 +156,9 @@ export async function loadPublicWishlist(
       imageVersion,
       showPrices,
       allowClaims,
+      bio,
+      forLine,
+      sheets,
       categories: categoryRows.map((row) => ({
         id: row.id,
         name: row.name,
@@ -227,17 +275,37 @@ async function findSharedItem(username: string, itemId: string) {
     .from(lists)
     .where(eq(lists.userId, person.id))
     .get()
-  // Stop sharing: nothing on the list can be claimed either.
-  if (!list || !list.shareOn) return null
+  if (!list) return null
   const item = await db
-    .select({ id: listItems.id, status: listItems.status })
+    .select({
+      id: listItems.id,
+      status: listItems.status,
+      categoryId: listItems.categoryId,
+    })
     .from(listItems)
     .where(and(eq(listItems.id, itemId), eq(listItems.listId, list.id)))
     .get()
   if (!item) return null
+  const sheet = item.categoryId
+    ? await db
+        .select()
+        .from(categories)
+        .where(
+          and(
+            eq(categories.id, item.categoryId),
+            eq(categories.listId, list.id),
+          ),
+        )
+        .get()
+    : undefined
+  const setting = sheet
+    ? { sharing: sheet.shareOn, allowClaims: sheet.shareClaims }
+    : { sharing: list.shareOn, allowClaims: list.shareClaims }
+  // Stop sharing (per sheet): nothing on that sheet can be claimed.
+  if (!setting.sharing) return null
   return {
     ownerId: person.id,
-    allowClaims: list.shareClaims,
+    allowClaims: setting.allowClaims,
     purchased: item.status === 'purchased',
   }
 }

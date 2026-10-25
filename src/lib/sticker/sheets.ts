@@ -362,18 +362,18 @@ export function sheetKicker(number: number) {
 }
 
 /**
- * "4 stickers · $400" on 1440 and the Got page, "4 · $400" on a 390 sheet
- * header (`compact`). The total is hidden when nothing has an offer.
+ * C14 Direction A (r8), at every size: "3 stickers · $310", or the
+ * count-only "2 stickers" when the total is null (Show prices off, or
+ * nothing has an offer).
  */
-export function sheetMeta(
-  count: number,
-  total: string | null,
-  options: { compact?: boolean } = {},
-) {
-  const counted = options.compact
-    ? String(count)
-    : `${count} ${count === 1 ? 'sticker' : 'stickers'}`
+export function sheetMeta(count: number, total: string | null) {
+  const counted = `${count} ${count === 1 ? 'sticker' : 'stickers'}`
   return [counted, total].filter(Boolean).join(' · ')
+}
+
+/** C98 count line for every sheet: "5 stickers · 2 sheets". No prices. */
+export function allSheetsMeta(count: number, sheets: number) {
+  return `${sheetMeta(count, null)} · ${sheets} ${sheets === 1 ? 'sheet' : 'sheets'}`
 }
 
 /** "dd.mm" in the viewer's zone. */
@@ -450,18 +450,42 @@ export function stickerLabel(
 }
 
 /** Got tab caption sub: "Got 2 Sep" (B1·08). */
-export function gotDate(timestamp: number) {
+export function gotDate(timestamp: number, now?: number) {
+  // COPY-R2 Direction A: "Got 2 Sep", "Got 9 Feb 2025" for earlier years.
+  return `Got ${now === undefined ? dayMonthOf(timestamp) : addedDate(timestamp, now)}`
+}
+
+function dayMonthOf(timestamp: number) {
   const date = new Date(timestamp)
-  return `Got ${date.getDate()} ${date.toLocaleString('en-GB', { month: 'short' })}`
+  return `${date.getDate()} ${MONTHS[date.getMonth()]}`
 }
 
 /**
  * r6 panel "Added" chip, same rule as Got: "25 Oct" in the current year,
  * "25 Oct 2025" otherwise.
  */
+/**
+ * r7: fixed three-letter months ("2 Sep"). Newer ICU writes "Sept" for
+ * en-GB, which breaks the copy and the C105 40-character budget.
+ */
+export const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const
+
 export function addedDate(timestamp: number, now: number) {
   const date = new Date(timestamp)
-  const day = `${date.getDate()} ${date.toLocaleString('en-GB', { month: 'short' })}`
+  const day = `${date.getDate()} ${MONTHS[date.getMonth()]}`
   return date.getFullYear() === new Date(now).getFullYear()
     ? day
     : `${day} ${date.getFullYear()}`
@@ -533,4 +557,21 @@ export function stickerKind(imageUrl: string | null | undefined): StickerKind {
 function round(value: number, digits: number) {
   const factor = 10 ** digits
   return Math.round(value * factor) / factor
+}
+
+/**
+ * COPY-R2 caption rule (wanted stickers, and the claim sheet since r8): the
+ * brand, else the shop hostname without "www.", else nothing.
+ */
+export function captionSub(
+  item: Partial<Pick<GuestItem, 'brand' | 'sourceUrl'>>,
+): string | null {
+  const brand = item.brand?.trim()
+  if (brand) return brand
+  if (!item.sourceUrl) return null
+  try {
+    return new URL(item.sourceUrl).hostname.replace(/^www\./, '') || null
+  } catch {
+    return null
+  }
 }

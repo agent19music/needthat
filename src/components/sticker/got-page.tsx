@@ -120,7 +120,7 @@ export function GotPage({
             fill="yellow"
             kicker="GOT PAGE"
             title="Got"
-            meta={sheetMeta(counted.length, total, { compact: true })}
+            meta={sheetMeta(counted.length, total)}
             metaPill={counted.length > 0 ? gotCountLabel(counted, now) : null}
             variant={wide ? 'wall' : 'got-column'}
             stickers={shown}

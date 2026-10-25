@@ -297,6 +297,8 @@ html[data-board='sticker'] .site-footer {
   color: #fff;
   font: 700 11px/1 var(--nt-font-num);
   letter-spacing: 0.12em;
+  /* C86 "Claimed" renders as the frames' CLAIMED. */
+  text-transform: uppercase;
   z-index: var(--nt-z-tape);
   pointer-events: none;
 }
@@ -312,6 +314,7 @@ html[data-board='sticker'] .site-footer {
   border: 0;
   border-radius: 999px;
   letter-spacing: 0;
+  text-transform: none;
   font: 700 11px/1 var(--nt-font-num);
   box-shadow: var(--nt-sh-edge);
 }
@@ -763,6 +766,55 @@ html[data-board='sticker'] .site-footer {
   border-radius: var(--nt-r-cover);
   background: var(--nt-yellow);
   color: var(--nt-ink);
+}
+
+/* r7 (Q4) B1·06 / B4·01: taped note, 250w, FOR kicker over a 2-line bio. */
+.nt-cover-note {
+  position: relative;
+  width: 250px;
+  max-width: 100%;
+  margin-top: 24px;
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--nt-ink);
+  transform: rotate(-1.2deg);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+}
+.nt-cover-note-tape {
+  position: absolute;
+  left: 90px;
+  top: -12px;
+  width: 70px;
+  height: 22px;
+  background: rgba(239, 239, 240, 0.9);
+  transform: rotate(3deg);
+}
+.nt-cover-for {
+  font: 700 10.5px/1 var(--nt-font-num);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.nt-cover-for span {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--nt-paper-2);
+}
+.nt-cover-bio {
+  margin: 8px 0 0;
+  font: 600 14px/1.35 var(--nt-font-ui);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nt-cover-note-tape + .nt-cover-bio {
+  margin-top: 0;
+}
+.nt-cover-bio[data-empty='true'] a {
+  color: var(--nt-text-muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 
 .nt-cover .nt-av {
@@ -3135,7 +3187,23 @@ button.nt-stat {
 
 /* r3 B2·05 390 overflow sheet: grabber, thumb header, 52h rows. */
 .nt-bottom.nt-ovf-sheet {
+  /* r9 (Bau): never taller than the screen less 24; fixed header, the
+     row list scrolls inside the sheet. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
   padding: 0 0 calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.nt-ovf-sheet > .nt-ovf-head,
+.nt-ovf-sheet > .nt-dd-sep {
+  flex: none;
+}
+.nt-ovf-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .nt-ovf-head {
   display: flex;
@@ -3168,6 +3236,22 @@ button.nt-stat {
   margin-top: 4px;
   font: 600 12px/1 var(--nt-font-ui);
   color: var(--nt-text-muted);
+}
+/* r7 (C105): who claimed it, under the sheet line. */
+.nt-ovf-head small.nt-ovf-claim {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  color: var(--nt-ink);
+  white-space: nowrap;
+}
+.nt-ovf-claim svg {
+  flex: none;
+  font-size: 13px;
+}
+.nt-chip-claim svg {
+  flex: none;
 }
 .nt-ovf-row {
   gap: 12px;
@@ -3313,10 +3397,19 @@ button.nt-stat {
 /* r4: Move, wide price and wide confirms are centred 440 modals; no frame, so reuse the B2·03 sheet's 440 width and padding. */
 .nt-panel.nt-modal.nt-price-layer,
 .nt-panel.nt-modal.nt-confirm,
-.nt-panel.nt-modal.nt-move {
+.nt-panel.nt-modal.nt-move,
+.nt-panel.nt-modal.nt-claim-layer {
   width: 440px;
   height: fit-content;
   padding: 28px 16px 24px;
+}
+/* r9 (Bau): 42 close X, top-right like the share modal's. */
+.nt-claim-layer .nt-claim-x {
+  align-self: flex-start;
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+  box-shadow: inset 0 0 0 1.5px var(--nt-line);
 }
 
 /* r4 stopped state: card at 40%, the link field becomes a "Sharing is off" line + Share again. */
@@ -3325,17 +3418,27 @@ button.nt-stat {
 }
 .nt-share-off {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  height: 54px;
+  gap: 6px 10px;
   margin-top: 26px;
-  padding: 0 6px 0 4px;
+  padding: 7px 6px 0 4px;
   font: 600 13px/1 var(--nt-font-ui);
   color: var(--nt-text-muted);
 }
-.nt-share-off > span {
+/* r7 (Addendum 1): "Your link is turned off", then C109 on one line. */
+.nt-share-off-text {
   flex: 1;
   min-width: 0;
+  font: 700 14px/1.2 var(--nt-font-ui);
+  color: var(--nt-ink);
+}
+.nt-share-off-sub {
+  flex: 1 0 100%;
+  font: 600 12px/1.3 var(--nt-font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .nt-share-off .nt-pill {
   height: 40px;
@@ -3350,8 +3453,264 @@ button.nt-stat {
   pointer-events: none;
 }
 .nt-share-off-line {
-  margin: 12px 0 0;
+  display: grid;
+  gap: 4px;
+  margin: 12px auto 0;
+  max-width: 300px;
   text-align: center;
   font: 600 13px/1.3 var(--nt-font-ui);
   color: var(--nt-text-muted);
+}
+/* r7: title, then C109 in two lines at 390. */
+.nt-share-off-line b {
+  font: 700 14px/1.2 var(--nt-font-ui);
+  color: var(--nt-ink);
+}
+.nt-share-off-line small {
+  font: inherit;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------------- r7 B2·06 / B2·06b account menu ---------------- */
+.nt-acct {
+  width: 260px;
+  padding: 6px 0;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 2px 4px rgba(0, 0, 0, 0.06),
+    0 12px 28px rgba(0, 0, 0, 0.12);
+}
+.nt-acct-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+}
+.nt-acct-head .nt-av {
+  width: 40px;
+  height: 40px;
+  font-size: 13px;
+  border-width: 3px;
+  transform: none;
+}
+.nt-acct-head b {
+  display: block;
+  font: 600 15px/1.2 var(--nt-font-ui);
+}
+.nt-acct-head small {
+  display: block;
+  margin-top: 3px;
+  font: 600 12.5px/1 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-acct .nt-dd-item {
+  gap: 12px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 0;
+  font: 600 14px/1 var(--nt-font-ui);
+}
+.nt-acct .nt-dd-item svg,
+.nt-acct-row svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.nt-acct .nt-dd-item[data-disabled] {
+  cursor: default;
+}
+.nt-acct-value {
+  margin-left: auto;
+  font: 600 13px/1 var(--nt-font-num);
+  color: var(--nt-text-muted);
+}
+.nt-acct-sheet .nt-acct-head {
+  padding-top: 14px;
+}
+.nt-acct-list {
+  display: flex;
+  flex-direction: column;
+}
+.nt-acct-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 52px;
+  padding: 0 20px;
+  border: 0;
+  background: none;
+  color: var(--nt-ink);
+  font: 600 15px/1 var(--nt-font-ui);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.nt-acct-row svg {
+  width: 21px;
+  height: 21px;
+}
+.nt-acct-row[aria-disabled='true'] {
+  cursor: default;
+}
+
+/* ---------------- r7 public: explainer (B3·03), empty, unshared ---------------- */
+.nt-how-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nt-how-steps li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+.nt-how-num {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--nt-yellow);
+  color: var(--nt-ink);
+  font: 700 14px/1 var(--nt-font-num);
+}
+.nt-how-num[data-step='2'] {
+  background: var(--nt-blue);
+  color: #fff;
+}
+.nt-how-num[data-step='3'] {
+  background: var(--nt-green-strong);
+  color: #fff;
+}
+.nt-how-steps b {
+  display: block;
+  font: 600 15px/1.3 var(--nt-font-ui);
+}
+.nt-how-steps small {
+  display: block;
+  margin-top: 3px;
+  font: 600 13px/1.4 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-how-privacy {
+  margin-top: 22px;
+  line-height: 1.35;
+}
+.nt-public-empty b {
+  display: block;
+  font: 400 22px/1.1 var(--nt-font-display);
+  color: var(--nt-ink);
+}
+.nt-public-empty p {
+  margin: 8px 0 0;
+}
+/* C107: Tilt Warp, centred, up to 2 lines at 390. */
+.nt-unshared {
+  padding: 48px 16px;
+  text-align: center;
+}
+.nt-unshared > h2 {
+  max-width: 300px;
+  margin: 0 auto;
+  font: 400 26px/1.1 var(--nt-font-display);
+  font-variation-settings: 'XROT' 24;
+  letter-spacing: -0.02em;
+  color: var(--nt-ink);
+  text-wrap: balance; /* r8 */
+}
+.nt-unshared > p {
+  margin: 10px 0 0;
+  font: 600 15px/1.4 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-unshared-sheets {
+  display: grid;
+  gap: 24px;
+  margin-top: 28px;
+  text-align: left;
+}
+@media (min-width: 768px) {
+  .nt-unshared {
+    padding-top: 96px;
+  }
+  .nt-unshared > h2 {
+    max-width: none;
+    font-size: 32px;
+  }
+}
+
+/* r7 B1·02 / B1·03: sort title (C29) and footnote (C35). */
+.nt-sort-label {
+  padding: 8px 14px;
+  font: 700 10.5px/1 var(--nt-font-num);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nt-text-muted);
+}
+.nt-sort-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 14px;
+  font: 600 12.5px/1 var(--nt-font-ui);
+  color: var(--nt-text-muted);
+}
+.nt-sort-note svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.nt-sortsheet ~ .nt-sort-note {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: 13px;
+}
+.nt-sortsheet ~ .nt-sort-note svg {
+  width: 18px;
+  height: 18px;
+}
+.nt-sort-label[data-sheet='true'] {
+  padding: 14px 20px 10px;
+}
+
+/* r7 B1·11 / B1·12: guest cover (C60 to C63). */
+.nt-guest-line {
+  margin: 10px 0 0;
+  font: 600 14px/1.3 var(--nt-font-ui);
+}
+.nt-pr .nt-guest-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--nt-text-muted);
+}
+.nt-pr .nt-guest-line svg {
+  width: 15px;
+  height: 15px;
+}
+.nt-cover .nt-actions:has(.nt-guest-cta) {
+  flex-direction: column;
+  gap: 10px;
+}
+.nt-cover .nt-actions .nt-guest-cta {
+  height: 48px;
+  justify-content: center;
+}
+.nt-cover .nt-actions .nt-guest-locked {
+  height: 44px;
+  justify-content: center;
+  color: var(--nt-text-muted);
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+  cursor: default;
 }

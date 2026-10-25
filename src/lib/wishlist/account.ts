@@ -75,6 +75,8 @@ export const saveAccountCategory = createServerFn({ method: 'POST' })
   })
 
 export const shareSettingsInput = z.object({
+  /** Category ids, '' for #unsorted. Share all sheets sends every sheet. */
+  sheetIds: z.array(z.string().max(80)).max(200),
   showPrices: z.boolean().optional(),
   allowClaims: z.boolean().optional(),
   sharing: z.boolean().optional(),
@@ -92,4 +94,16 @@ export const saveShareSettings = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const { writeShareSettings } = await import('./account.server')
     return writeShareSettings(data)
+  })
+
+export const profileInput = z.object({
+  bio: z.string().max(400),
+  forLine: z.string().max(100),
+})
+
+export const saveProfile = createServerFn({ method: 'POST' })
+  .validator(profileInput)
+  .handler(async ({ data }) => {
+    const { writeProfile } = await import('./account.server')
+    return writeProfile(data)
   })

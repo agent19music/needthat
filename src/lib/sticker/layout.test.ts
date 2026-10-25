@@ -330,3 +330,18 @@ describe('got-wide (r3 B1·07 band)', () => {
     expect(plan.more).not.toBeNull()
   })
 })
+
+describe('r8 390 column bottom (minor 12)', () => {
+  it('ends at the last caption text + 40 without a FAB', () => {
+    for (const count of [1, 2, 3]) {
+      const plan = planSheet('column', many(count), {
+        fab: false,
+        textBottom: true,
+      })
+      const text = Math.max(
+        ...plan.places.map((p) => p.caption.y + Z1.captionTextH),
+      )
+      expect(plan.height - Math.round(text)).toBe(40)
+    }
+  })
+})

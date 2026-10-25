@@ -4,7 +4,7 @@
  * in the frame's slots plus a "+N" sticker for 4+, no prices, no filters
  * (satori-safe: flat shapes, baked PNG cut-outs). Pure: no I/O.
  */
-import { SHEET_FG, buildSheets, sheetMeta } from '#/lib/sticker/sheets'
+import { SHEET_FG, allSheetsMeta, buildSheets } from '#/lib/sticker/sheets'
 import type { SheetFill, StickerKind } from '#/lib/sticker/sheets'
 import type { GuestItem } from '#/lib/guest-wishlist'
 import type { PublicWishlist } from '#/lib/wishlist/types'
@@ -479,8 +479,6 @@ export function ogContent(profile: PublicWishlist, sheetId: string | null) {
     fill: (sheet.unsorted ? 'paper' : sheet.color) as SheetFill,
     tag: sheet.tag,
     stickers: sheet.wanted,
-    countLine: `${sheetMeta(wanted, null)} · ${filled.length} ${
-      filled.length === 1 ? 'sheet' : 'sheets'
-    }`,
+    countLine: allSheetsMeta(wanted, filled.length),
   }
 }

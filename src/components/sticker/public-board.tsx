@@ -2,24 +2,30 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   CheckCircleIcon,
-  EyeSlashIcon,
+  EyeIcon,
   GiftIcon,
   HandGrabbingIcon,
   ListIcon,
   PlusIcon,
   SquaresFourIcon,
   StackIcon,
+  XIcon,
 } from '@phosphor-icons/react'
 
 import { Avatar, deskRows, useBand, useWide } from '#/components/sticker/board'
 import type { DeskCell } from '#/components/sticker/board'
-import { Overlay, Toast } from '#/components/sticker/overlays'
+import { Overlay, OverlayClose, Toast } from '#/components/sticker/overlays'
 import type { ToastState } from '#/components/sticker/overlays'
 import { Sheet } from '#/components/sticker/sheet'
-import { KissCutFilters, StickerArt } from '#/components/sticker/sticker'
+import {
+  CoverNote,
+  KissCutFilters,
+  StickerArt,
+} from '#/components/sticker/sticker'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 import {
   buildSheets,
+  captionSub,
   formatPrice,
   gotCountLabel,
   sheetKicker,
@@ -29,6 +35,21 @@ import type { TagSheet } from '#/lib/sticker/sheets'
 import type { LayoutKind } from '#/lib/sticker/layout'
 import { claimItem, releaseClaim } from '#/lib/wishlist/public'
 import type { PublicSticker, PublicWishlist } from '#/lib/wishlist/types'
+import { shareFor } from '#/lib/wishlist/sheet-share'
+import {
+  CLAIMED_BY_YOU,
+  CLAIM_PRIVACY,
+  CLAIM_TOAST,
+  HOW_CLAIMING,
+  HOW_CLOSE,
+  HOW_STEPS,
+  MAKE_WISHLIST,
+  NOTHING_SHARED_LINE,
+  NOTHING_SHARED_TITLE,
+  UNCLAIM,
+  UNSHARED_TITLE,
+  unsharedClaimLine,
+} from '#/lib/sticker/claim-copy'
 
 /** Public stickers in the shape the sheet renders. */
 export function publicItems(stickers: ReadonlyArray<PublicSticker>) {
@@ -51,7 +72,7 @@ export function publicItems(stickers: ReadonlyArray<PublicSticker>) {
   }))
 }
 
-type Claim = { claimed: boolean; mine: boolean }
+type Claim = { claimed: boolean; mine: boolean; caption?: string | null }
 
 /** ?sheet= values for the Got and #unsorted tabs (not category ids). */
 const GOT_KEY = 'got'
@@ -71,11 +92,23 @@ export function PublicBoard({
   const wide = useWide()
   const band = useBand()
   const now = useMemo(() => Date.now(), [])
-  const items = useMemo(() => publicItems(profile.items), [profile.items])
+  // r7 (Q3, Addendum 3): unshared sheets only carry the viewer's own claims.
+  const items = useMemo(
+    () => publicItems(profile.items.filter((sticker) => sticker.shared)),
+    [profile.items],
+  )
+  const kept = useMemo(
+    () => publicItems(profile.items.filter((sticker) => !sticker.shared)),
+    [profile.items],
+  )
   const categories = profile.categories as Array<GuestCategory>
   const sets = useMemo(
     () => buildSheets(items, categories),
     [items, categories],
+  )
+  const keptSets = useMemo(
+    () => buildSheets(kept, categories),
+    [kept, categories],
   )
   const [claims, setClaims] = useState<Record<string, Claim>>(() =>
     Object.fromEntries(
@@ -109,6 +142,36 @@ export function PublicBoard({
     sets.filled.find((sheet) =>
       sheetId === UNSORTED_KEY ? sheet.unsorted : sheet.categoryId === sheetId,
     ) ?? null
+  // The requested sheet (or every sheet, for the bare link) is turned off.
+  // An unshared sheet's category only comes back with the viewer's claims,
+  // so an unknown ?sheet= reads as unshared too.
+  const selectedCategoryId: string | null | undefined =
+    sheetId === null || sheetId === GOT_KEY
+      ? undefined
+      : sheetId === UNSORTED_KEY
+        ? null
+        : sheetId
+  const unshared =
+    selectedCategoryId === undefined
+      ? sheetId === null &&
+        !Object.values(profile.sheets).some((entry) => entry.sharing)
+      : selectedCategoryId === null
+        ? !shareFor(profile.sheets, null).sharing
+        : !(
+            selectedCategoryId in profile.sheets &&
+            profile.sheets[selectedCategoryId].sharing
+          )
+  const keptShown = unshared
+    ? selectedCategoryId !== undefined
+      ? keptSets.filled.filter(
+          (sheet) => (sheet.categoryId ?? null) === selectedCategoryId,
+        )
+      : keptSets.filled
+    : []
+  const keptCount = keptShown.reduce(
+    (sum, sheet) => sum + sheet.stickers.length,
+    0,
+  )
   const first = profile.name.trim().split(/\s+/)[0] || profile.username
   const user = {
     name: profile.name,
@@ -117,8 +180,14 @@ export function PublicBoard({
   }
 
   function claimOf(item: GuestItem): Claim {
-    return claims[item.id] ?? { claimed: false, mine: false }
+    const state = claims[item.id] ?? { claimed: false, mine: false }
+    // C110 in the C104 slot, on the unshared page only.
+    return unshared && state.mine
+      ? { ...state, caption: CLAIMED_BY_YOU }
+      : state
   }
+  const claimsOn = (item: GuestItem) =>
+    shareFor(profile.sheets, item.categoryId).allowClaims
 
   function say(message: string, undo?: () => void) {
     toastId.current += 1
@@ -151,7 +220,7 @@ export function PublicBoard({
         [item.id]: { claimed: true, mine: true },
       }))
       setOpen(null)
-      say("Claimed. Only you can see it's you", () => {
+      say(CLAIM_TOAST, () => {
         setToast(null)
         void release(item)
       })
@@ -187,21 +256,23 @@ export function PublicBoard({
   const openClaim = open ? claimOf(open) : null
   const openSheet = open ? sheetOf(sets.filled, open) : null
 
-  const onOpen = profile.allowClaims
-    ? (item: GuestItem) => {
-        if (item.status === 'purchased') return
-        const state = claimOf(item)
-        if (state.claimed && !state.mine) return
-        setError(null)
-        setOpen(item)
-      }
-    : undefined
+  const onOpen = (item: GuestItem) => {
+    if (item.status === 'purchased' || !claimsOn(item)) return
+    const state = claimOf(item)
+    if (state.claimed && !state.mine) return
+    if (unshared && !state.mine) return
+    setError(null)
+    setOpen(item)
+  }
   const common = {
     now,
-    showPrice: profile.showPrices,
+    // Prices come back null on sheets with Show prices off (server).
+    showPrice: true,
     claimOf,
     categories,
     allItems: items,
+    // r8 (B4·02): no FAB on the public page, so caption bottom + 40.
+    fab: false,
     onOpen,
   }
   const wantCount = items.filter((item) => item.status !== 'purchased').length
@@ -246,7 +317,8 @@ export function PublicBoard({
         role="tab"
         className="nt-tab"
         data-fill="all"
-        aria-selected={selected === null && !gotShown}
+        // r8: none active on the unshared page.
+        aria-selected={selected === null && !gotShown && !unshared}
         onClick={() => choose(null)}
       >
         #all <b>{wantCount}</b>
@@ -300,32 +372,39 @@ export function PublicBoard({
     </div>
   )
 
-  // C85 has no copy yet: the existing "Create account" string stands in.
   const makeOwn = (
     <Link to="/sign-up" className="nt-pill" data-tone="yellow">
       <PlusIcon weight="bold" aria-hidden="true" />
-      Create account
+      {MAKE_WISHLIST}
     </Link>
   )
 
-  const howButton = profile.allowClaims ? (
-    <button
-      type="button"
-      className="nt-pill nt-how"
-      data-tone="white"
-      onClick={() => setHowOpen(true)}
-    >
-      <GiftIcon aria-hidden="true" />
-      How claiming works
-    </button>
-  ) : null
+  // C70: hidden when Friends can claim is off (on the open sheet, or on
+  // every shared sheet for #all) and on the unshared page.
+  const claimable = selected
+    ? shareFor(profile.sheets, selected.categoryId).allowClaims
+    : profile.allowClaims
+  const howButton =
+    claimable && !unshared ? (
+      <button
+        type="button"
+        className="nt-pill nt-how"
+        data-tone="white"
+        onClick={() => setHowOpen(true)}
+      >
+        <GiftIcon aria-hidden="true" />
+        {HOW_CLAIMING}
+      </button>
+    ) : null
 
   const overlays = (
     <>
       <Overlay
         open={open !== null}
         onClose={() => setOpen(null)}
-        kind="bottom"
+        // r8: a centred 440 modal at 1440, no grab handle.
+        kind={wide ? 'modal' : 'bottom'}
+        className={wide ? 'nt-claim-layer' : undefined}
         title={open ? `Claim ${open.title}` : 'Claim'}
       >
         {open && openClaim ? (
@@ -337,21 +416,29 @@ export function PublicBoard({
               <div>
                 {open.title}
                 <small>
-                  {[openSheet?.name, open.sourceUrl ? 'via shop link' : null]
+                  {[openSheet?.name, captionSub(open)]
                     .filter(Boolean)
-                    .join(' · ') || open.brand}
+                    .join(' · ')}
                 </small>
               </div>
-              {profile.showPrices && open.price ? (
-                <b>{formatPrice(open.price)}</b>
+              {open.price ? <b>{formatPrice(open.price)}</b> : null}
+              {wide ? (
+                // r9 (Bau): 42 close X at top-right, like the share modal.
+                // Esc and a scrim click also close (Radix Dialog).
+                <OverlayClose asChild>
+                  <button
+                    type="button"
+                    className="nt-ib nt-claim-x"
+                    aria-label="Close"
+                  >
+                    <XIcon weight="bold" aria-hidden="true" />
+                  </button>
+                </OverlayClose>
               ) : null}
             </div>
             <div className="nt-info">
-              <EyeSlashIcon aria-hidden="true" />
-              <span>
-                {first} won&apos;t see who claimed it. Friends just see
-                it&apos;s taken.
-              </span>
+              <EyeIcon aria-hidden="true" />
+              <span>{CLAIM_PRIVACY}</span>
             </div>
             {error ? <p className="nt-err">{error}</p> : null}
             <div style={{ display: 'flex', marginTop: 24 }}>
@@ -372,7 +459,7 @@ export function PublicBoard({
                   disabled={busy}
                   onClick={() => void release(open)}
                 >
-                  Unclaim
+                  {UNCLAIM}
                 </button>
               ) : (
                 <button
@@ -394,19 +481,74 @@ export function PublicBoard({
         open={howOpen}
         onClose={() => setHowOpen(false)}
         kind="bottom"
-        title="How claiming works"
+        title={HOW_CLAIMING}
       >
-        <div className="nt-info" style={{ marginTop: 0 }}>
-          <EyeSlashIcon aria-hidden="true" />
-          <span>
-            {first} won&apos;t see who claimed it. Friends just see it&apos;s
-            taken.
-          </span>
+        <ol className="nt-how-steps">
+          {HOW_STEPS.map((step, index) => (
+            <li key={step.title}>
+              <span className="nt-how-num" data-step={index + 1}>
+                {index + 1}
+              </span>
+              <div>
+                <b>{step.title}</b>
+                <small>{step.line}</small>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <div className="nt-info nt-how-privacy">
+          <EyeIcon aria-hidden="true" />
+          <span>{CLAIM_PRIVACY}</span>
+        </div>
+        <div style={{ display: 'flex', marginTop: 24 }}>
+          <button
+            type="button"
+            className="nt-cta"
+            data-tone="ink"
+            onClick={() => setHowOpen(false)}
+          >
+            {HOW_CLOSE}
+          </button>
         </div>
       </Overlay>
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </>
+  )
+
+  // C78 / C79: sharing is on but nothing is visible.
+  const nothingShared = (
+    <div className="nt-public-empty">
+      <b>{NOTHING_SHARED_TITLE}</b>
+      <p>{NOTHING_SHARED_LINE}</p>
+    </div>
+  )
+  // C107 for everyone; C108 and the claimer's own stickers when they have one.
+  const unsharedView = (variant: LayoutKind) => (
+    <div className="nt-unshared">
+      <h2>{UNSHARED_TITLE}</h2>
+      {keptCount > 0 ? (
+        <>
+          <p>{unsharedClaimLine(keptCount)}</p>
+          <div className="nt-unshared-sheets">
+            {keptShown.map((sheet) => (
+              <Sheet
+                key={sheet.key}
+                {...common}
+                fill={sheet.unsorted ? 'paper' : sheet.color}
+                kicker={sheetKicker(sheet.number)}
+                title={sheet.tag}
+                meta={sheetMeta(sheet.stickers.length, null)}
+                variant={variant}
+                stickers={sheet.stickers}
+                mode="public"
+                active
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
   )
 
   if (!wide) {
@@ -436,19 +578,23 @@ export function PublicBoard({
           {howButton ?? <span />}
           {seg}
         </div>
-        {sets.filled.length + (gotCount > 0 ? 1 : 0) > 1 ? (
+        {/* r8: the unshared page always keeps the tabs, so visitors can
+            still reach the shared sheets. */}
+        {sets.filled.length + (gotCount > 0 ? 1 : 0) > (unshared ? 0 : 1) ? (
           <div className="nt-mtabs" role="tablist" aria-label="Sheets">
             {tabs}
           </div>
         ) : null}
         <div className="nt-msheets">
-          {gotShown ? (
-            gotSheet('got-column')
-          ) : shown.length === 0 ? (
-            <p className="nt-public-empty">Nothing shared yet</p>
-          ) : (
-            shown.map((sheet, index) => sheetEl(sheet, 'column', index === 0))
-          )}
+          {unshared
+            ? unsharedView('column')
+            : gotShown
+              ? gotSheet('got-column')
+              : shown.length === 0
+                ? nothingShared
+                : shown.map((sheet, index) =>
+                    sheetEl(sheet, 'column', index === 0),
+                  )}
         </div>
         {overlays}
       </div>
@@ -500,6 +646,7 @@ export function PublicBoard({
                 <small>got</small>
               </span>
             </div>
+            <CoverNote bio={profile.bio} forLine={profile.forLine} />
             {howButton ? <div className="nt-actions">{howButton}</div> : null}
           </div>
         </aside>
@@ -510,10 +657,12 @@ export function PublicBoard({
             </div>
           </div>
           <div className="nt-board">
-            {gotShown ? (
+            {unshared ? (
+              unsharedView('wall')
+            ) : gotShown ? (
               <div className="nt-board-grid">{gotSheet('wall')}</div>
             ) : rows.length === 0 ? (
-              <p className="nt-public-empty">Nothing shared yet</p>
+              nothingShared
             ) : (
               <div className="nt-board-grid">
                 {rows.map((row, rowIndex) => (

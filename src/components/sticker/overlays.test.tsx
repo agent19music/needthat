@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { Overlay, Toast } from './overlays'
 
@@ -26,6 +26,10 @@ describe('Toast Undo over an open modal (r4 Stop sharing)', () => {
     fireEvent.click(button)
     expect(undo).toHaveBeenCalledTimes(1)
     expect(onClose).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog', { name: 'Share sheet' })).toBeVisible()
+    // r9: the modal fades in from opacity 0 (motion). Under a loaded full
+    // run the tween can still be at 0 here, which made toBeVisible flaky,
+    // so wait for it; the open/close assertion above stays synchronous.
+    const dialog = screen.getByRole('dialog', { name: 'Share sheet' })
+    await waitFor(() => expect(dialog).toBeVisible())
   })
 })

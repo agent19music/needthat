@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { category, item } from '../../../test/fixtures'
 import {
+  captionSub,
   addedDate,
   GOT_PAGE_SIZE,
   NEW_PER_SHEET,
@@ -25,6 +26,7 @@ import {
   paginateGot,
   seeded,
   sheetKicker,
+  allSheetsMeta,
   sheetMeta,
   stickerKind,
   stickerLabel,
@@ -317,9 +319,14 @@ describe('copy helpers', () => {
     expect(sheetMeta(0, null)).toBe('0 stickers')
   })
 
-  it('writes the compact 390 meta', () => {
-    expect(sheetMeta(4, '$400', { compact: true })).toBe('4 · $400')
-    expect(sheetMeta(1, null, { compact: true })).toBe('1')
+  it('r9: C98 count line for every sheet, with singulars and no prices', () => {
+    expect(allSheetsMeta(5, 2)).toBe('5 stickers · 2 sheets')
+    expect(allSheetsMeta(1, 1)).toBe('1 sticker · 1 sheet')
+  })
+
+  it('C14 Direction A (r8): count with total, count-only without', () => {
+    expect(sheetMeta(3, '$310')).toBe('3 stickers · $310')
+    expect(sheetMeta(2, null)).toBe('2 stickers')
   })
 
   it('stamps got dates as dd.mm', () => {
@@ -499,5 +506,22 @@ describe('addedDate (r6, same rule as Got)', () => {
   })
   it('keeps the year otherwise', () => {
     expect(addedDate(new Date(2025, 11, 31).getTime(), now)).toBe('31 Dec 2025')
+  })
+  it('always uses three-letter months, never ICU "Sept" (r7)', () => {
+    expect(addedDate(new Date(2026, 8, 2).getTime(), now)).toBe('2 Sep')
+    expect(addedDate(new Date(2026, 5, 9).getTime(), now)).toBe('9 Jun')
+  })
+})
+
+describe('captionSub (COPY-R2 caption rule, r8)', () => {
+  it('brand, then hostname without www, then nothing', () => {
+    expect(captionSub({ brand: 'Allbirds', sourceUrl: 'https://x.com' })).toBe(
+      'Allbirds',
+    )
+    expect(
+      captionSub({ brand: ' ', sourceUrl: 'https://www.arket.com/en/p/1' }),
+    ).toBe('arket.com')
+    expect(captionSub({ brand: '', sourceUrl: '' })).toBeNull()
+    expect(captionSub({ brand: '', sourceUrl: 'not a url' })).toBeNull()
   })
 })

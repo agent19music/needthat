@@ -275,6 +275,7 @@ describe('ogContent', () => {
     createdAt: 1,
     claimed: false,
     claimedByMe: false,
+    shared: true,
   })
   const profile: PublicWishlist = {
     username: 'sean',
@@ -283,6 +284,9 @@ describe('ogContent', () => {
     imageVersion: 'v',
     showPrices: true,
     allowClaims: true,
+    bio: '',
+    forLine: '',
+    sheets: {},
     categories: [
       { id: 'fits', name: 'fits', color: 'green', createdAt: 1 },
       { id: 'home', name: 'home', color: null, createdAt: 2 },

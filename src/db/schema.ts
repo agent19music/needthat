@@ -33,7 +33,11 @@ export const lists = sqliteTable(
     id: text('id').primaryKey(),
     userId: text('user_id'),
     name: text('name').notNull().default('Wishlist'),
-    /** Share toggles (Sticker Sheet share sheet). Per list until Sean decides per-sheet (Q7). */
+    /**
+     * r7 (Q3 decided per sheet): these three now hold the settings for the
+     * #unsorted sheet only ("No sheet", no category row). Named sheets keep
+     * their own on `categories`.
+     */
     sharePrices: integer('share_prices', { mode: 'boolean' })
       .notNull()
       .default(true),
@@ -42,6 +46,9 @@ export const lists = sqliteTable(
       .default(true),
     /** r3 share "…" → Stop sharing (C101). Off: the public page shows nothing. */
     shareOn: integer('share_on', { mode: 'boolean' }).notNull().default(true),
+    /** r7 (Q4): profile bio (C11) and the "FOR" kicker value (C12). */
+    bio: text('bio'),
+    forLine: text('for_line'),
     ...timestamps,
   },
   (table) => [index('lists_user_id_idx').on(table.userId)],
@@ -57,6 +64,14 @@ export const categories = sqliteTable(
     name: text('name').notNull(),
     /** Sheet colour. Null rows fall back to the blue → green → red cycle by creation order. */
     color: text('color', { enum: ['blue', 'green', 'red', 'white'] }),
+    /** r7 (Q3): per-sheet Show prices / Friends can claim / sharing, all on for new sheets. */
+    sharePrices: integer('share_prices', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    shareClaims: integer('share_claims', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    shareOn: integer('share_on', { mode: 'boolean' }).notNull().default(true),
     createdAt: timestamps.createdAt,
   },
   (table) => [index('categories_list_id_idx').on(table.listId)],
@@ -202,9 +217,9 @@ export const images = sqliteTable(
 )
 
 /**
- * One active claim per item ("I'll get this"). The owner never reads this
- * table (Q3 default: claims stay a surprise); only the claimer and other
- * visitors see that an item is taken.
+ * One active claim per item ("I'll get this"). r7 (Q1 decided): the owner
+ * sees who claimed (C104/C105); other visitors only see that it's taken.
+ * Rows are kept while a sheet isn't shared (Addendum 3).
  */
 export const claims = sqliteTable(
   'claims',

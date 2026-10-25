@@ -195,28 +195,149 @@ describe('die images', () => {
   })
 })
 
-describe('share toggles', () => {
-  it('default on, and save per list', async () => {
+const ON = { showPrices: true, allowClaims: true, sharing: true }
+
+describe('share toggles (r7: per sheet)', () => {
+  it('every sheet starts with both switches on and sharing on', async () => {
+    await account.writeAccountCategory({
+      id: 'fits',
+      name: 'fits',
+      createdAt: 1,
+    })
     expect(await account.readShareSettings()).toEqual({
       ok: true,
-      showPrices: true,
-      allowClaims: true,
-      sharing: true,
+      sheets: { '': ON, fits: ON },
+      bio: '',
+      forLine: '',
     })
-    expect(await account.writeShareSettings({ showPrices: false })).toEqual({
-      ok: true,
+  })
+
+  it('saves one sheet without touching the others', async () => {
+    await account.writeAccountCategory({
+      id: 'fits',
+      name: 'fits',
+      createdAt: 1,
+    })
+    await account.writeAccountCategory({
+      id: 'desk',
+      name: 'desk',
+      createdAt: 2,
+    })
+    const result = await account.writeShareSettings({
+      sheetIds: ['fits'],
       showPrices: false,
-      allowClaims: true,
-      sharing: true,
+    })
+    expect(result).toMatchObject({
+      ok: true,
+      sheets: {
+        '': ON,
+        fits: { ...ON, showPrices: false },
+        desk: ON,
+      },
     })
     expect(await account.readShareSettings()).toMatchObject({
-      showPrices: false,
+      sheets: { fits: { showPrices: false }, desk: { showPrices: true } },
+    })
+  })
+
+  it('#unsorted keeps its switches on the list row', async () => {
+    await account.writeAccountCategory({
+      id: 'fits',
+      name: 'fits',
+      createdAt: 1,
+    })
+    await account.writeShareSettings({ sheetIds: [''], allowClaims: false })
+    expect(await account.readShareSettings()).toMatchObject({
+      sheets: { '': { ...ON, allowClaims: false }, fits: ON },
+    })
+  })
+
+  it('Share all sheets writes every sheet at once', async () => {
+    await account.writeAccountCategory({
+      id: 'fits',
+      name: 'fits',
+      createdAt: 1,
+    })
+    await account.writeAccountCategory({
+      id: 'desk',
+      name: 'desk',
+      createdAt: 2,
+    })
+    await account.writeShareSettings({
+      sheetIds: ['', 'fits', 'desk'],
+      sharing: false,
+    })
+    const result = await account.readShareSettings()
+    if (!result.ok) throw new Error(result.message)
+    expect(Object.values(result.sheets).every((s) => !s.sharing)).toBe(true)
+    expect(Object.values(result.sheets).every((s) => s.showPrices)).toBe(true)
+  })
+
+  it("ignores another person's sheet ids", async () => {
+    as('friend')
+    await account.writeAccountCategory({
+      id: 'theirs',
+      name: 'x',
+      createdAt: 1,
+    })
+    as('owner')
+    await account.writeShareSettings({ sheetIds: ['theirs'], sharing: false })
+    as('friend')
+    expect(await account.readShareSettings()).toMatchObject({
+      sheets: { theirs: ON },
+    })
+  })
+
+  it('an empty patch changes nothing', async () => {
+    expect(await account.writeShareSettings({ sheetIds: [''] })).toMatchObject({
+      ok: true,
+      sheets: { '': ON },
     })
   })
 
   it('needs a session', async () => {
     as(null)
-    expect((await account.writeShareSettings({ showPrices: false })).ok).toBe(
+    expect(
+      (await account.writeShareSettings({ sheetIds: [''], showPrices: false }))
+        .ok,
+    ).toBe(false)
+    expect((await account.readShareSettings()).ok).toBe(false)
+  })
+})
+
+describe('profile bio and FOR line (C11, C12)', () => {
+  it('saves, trims, collapses spaces and caps the lengths', async () => {
+    const result = await account.writeProfile({
+      bio: `  ${'a'.repeat(80)}  `,
+      forLine: '  my   big birthday party ',
+    })
+    expect(result).toEqual({
+      ok: true,
+      bio: 'a'.repeat(account.BIO_MAX),
+      forLine: 'my big birth',
+    })
+    expect(await account.readShareSettings()).toMatchObject({
+      bio: 'a'.repeat(70),
+      forLine: 'my big birth',
+    })
+  })
+
+  it('clears with empty strings and shows on the public page', async () => {
+    await account.writeProfile({ bio: 'Coffee and gear', forLine: 'Birthday' })
+    expect(await publicSheet.loadPublicWishlist('sean')).toMatchObject({
+      bio: 'Coffee and gear',
+      forLine: 'Birthday',
+    })
+    await account.writeProfile({ bio: ' ', forLine: '' })
+    expect(await publicSheet.loadPublicWishlist('sean')).toMatchObject({
+      bio: '',
+      forLine: '',
+    })
+  })
+
+  it('needs a session', async () => {
+    as(null)
+    expect((await account.writeProfile({ bio: 'x', forLine: '' })).ok).toBe(
       false,
     )
   })
@@ -263,25 +384,76 @@ describe('public sheet', () => {
 
   it('hides prices when the owner turns them off, and changes the image version', async () => {
     const before = await publicSheet.loadPublicWishlist('sean')
-    await account.writeShareSettings({ showPrices: false })
+    await account.writeShareSettings({ sheetIds: ['fits'], showPrices: false })
     const after = await publicSheet.loadPublicWishlist('sean')
-    expect(after?.showPrices).toBe(false)
+    // #unsorted (empty, still on) keeps the profile-wide flag on.
+    expect(after?.sheets.fits.showPrices).toBe(false)
     expect(after?.items.every((item) => item.price === null)).toBe(true)
     expect(after?.imageVersion).not.toBe(before?.imageVersion)
   })
 
-  it('Stop sharing shows nothing shared and blocks claims; sharing again restores it', async () => {
-    await account.writeShareSettings({ sharing: false })
+  it('Stop sharing hides that sheet and blocks claims; sharing again restores it', async () => {
+    await account.writeShareSettings({ sheetIds: ['fits'], sharing: false })
     const stopped = await publicSheet.loadPublicWishlist('sean')
     expect(stopped).not.toBeNull()
     expect(stopped?.items).toEqual([])
     expect(stopped?.categories).toEqual([])
+    expect(stopped?.sheets.fits.sharing).toBe(false)
     expect(
       (await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')).ok,
     ).toBe(false)
-    await account.writeShareSettings({ sharing: true })
+    await account.writeShareSettings({ sheetIds: ['fits'], sharing: true })
     expect((await publicSheet.loadPublicWishlist('sean'))?.items).toHaveLength(
       2,
+    )
+  })
+
+  it('stopping one sheet leaves the others shared', async () => {
+    await account.writeAccountCategory({
+      id: 'desk',
+      name: 'desk',
+      createdAt: 20,
+    })
+    await account.writeAccountItem(input('lamp', { categoryId: 'desk' }))
+    await account.writeAccountItem(input('loose'))
+    await account.writeShareSettings({ sheetIds: ['fits'], sharing: false })
+    const sheet = await publicSheet.loadPublicWishlist('sean')
+    expect(sheet?.items.map((item) => item.id).sort()).toEqual([
+      'lamp',
+      'loose',
+    ])
+    expect(sheet?.items.every((item) => item.shared)).toBe(true)
+    expect(sheet?.categories.map((row) => row.id)).toEqual(['desk'])
+  })
+
+  it('Show prices off nulls prices only on that sheet', async () => {
+    await account.writeAccountItem(
+      input('loose', { price: { amount: 1200, currency: 'USD' } }),
+    )
+    await account.writeShareSettings({ sheetIds: ['fits'], showPrices: false })
+    const sheet = await publicSheet.loadPublicWishlist('sean')
+    const byId = new Map(sheet!.items.map((item) => [item.id, item]))
+    expect(byId.get('want')?.price).toBeNull()
+    expect(byId.get('loose')?.price).toEqual({ amount: 1200, currency: 'USD' })
+    expect(sheet?.showPrices).toBe(true)
+  })
+
+  it('profile flags are off when no shared sheet has them on', async () => {
+    await account.writeShareSettings({
+      sheetIds: ['', 'fits'],
+      allowClaims: false,
+      showPrices: false,
+    })
+    const sheet = await publicSheet.loadPublicWishlist('sean')
+    expect(sheet?.allowClaims).toBe(false)
+    expect(sheet?.showPrices).toBe(false)
+  })
+
+  it("a stopped sheet's switches don't count toward the profile flags", async () => {
+    await account.writeShareSettings({ sheetIds: [''], allowClaims: false })
+    await account.writeShareSettings({ sheetIds: ['fits'], sharing: false })
+    expect((await publicSheet.loadPublicWishlist('sean'))?.allowClaims).toBe(
+      false,
     )
   })
 
@@ -345,7 +517,7 @@ describe('claims', () => {
       (await publicSheet.claimPublicItem({ id: 'friend' }, 'wanjiru', 'want'))
         .ok,
     ).toBe(false)
-    await account.writeShareSettings({ allowClaims: false })
+    await account.writeShareSettings({ sheetIds: [''], allowClaims: false })
     expect(
       await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want'),
     ).toEqual({
@@ -356,9 +528,97 @@ describe('claims', () => {
 
   it('turning claims off hides existing claims', async () => {
     await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
-    await account.writeShareSettings({ allowClaims: false })
+    await account.writeShareSettings({ sheetIds: [''], allowClaims: false })
     const sheet = await publicSheet.loadPublicWishlist('sean', { id: 'friend' })
     expect(sheet?.items.every((i) => !i.claimed)).toBe(true)
+  })
+
+  it('the owner sees who claimed (Q1), with the name and when', async () => {
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
+    expect((await wishlist()).claims).toEqual({
+      want: { name: 'wanjiru name', at: expect.any(Number) },
+    })
+  })
+
+  it('the owner gets null for a claimer with no display name (C106)', async () => {
+    state.sqlite!.exec("update user set name = '  ' where id = 'friend'")
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
+    expect((await wishlist()).claims.want.name).toBeNull()
+  })
+
+  it("the owner doesn't see claims on claims-off sheets", async () => {
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
+    await account.writeShareSettings({ sheetIds: [''], allowClaims: false })
+    expect((await wishlist()).claims).toEqual({})
+  })
+
+  it('claims are kept while sharing is off, and the owner still sees them', async () => {
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
+    await account.writeShareSettings({ sheetIds: [''], sharing: false })
+    expect(Object.keys((await wishlist()).claims)).toEqual(['want'])
+    await account.writeShareSettings({ sheetIds: [''], sharing: true })
+    const back = await publicSheet.loadPublicWishlist('sean', { id: 'other' })
+    expect(back?.items.find((i) => i.id === 'want')?.claimed).toBe(true)
+  })
+
+  it('unshared sheet: a claimer sees only their own wanted stickers, unshared', async () => {
+    await account.writeAccountItem(input('mine2'))
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
+    await publicSheet.claimPublicItem({ id: 'other' }, 'sean', 'mine2')
+    await account.writeShareSettings({ sheetIds: [''], sharing: false })
+    const friend = await publicSheet.loadPublicWishlist('sean', {
+      id: 'friend',
+    })
+    expect(friend?.items.map((i) => i.id)).toEqual(['want'])
+    expect(friend?.items[0]).toMatchObject({
+      shared: false,
+      claimed: true,
+      claimedByMe: true,
+    })
+    const visitor = await publicSheet.loadPublicWishlist('sean')
+    expect(visitor?.items).toEqual([])
+    const owner = await publicSheet.loadPublicWishlist('sean', { id: 'owner' })
+    expect(owner?.items).toEqual([])
+  })
+
+  it('unshared sheet with claims off returns nothing, even to the claimer', async () => {
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
+    await account.writeShareSettings({
+      sheetIds: [''],
+      sharing: false,
+      allowClaims: false,
+    })
+    expect(
+      (await publicSheet.loadPublicWishlist('sean', { id: 'friend' }))?.items,
+    ).toEqual([])
+  })
+
+  it('a claimer can still unclaim on an unshared sheet', async () => {
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'want')
+    await account.writeShareSettings({ sheetIds: [''], sharing: false })
+    expect(
+      await publicSheet.releasePublicClaim({ id: 'friend' }, 'want'),
+    ).toEqual({ ok: true })
+    expect(
+      (await publicSheet.loadPublicWishlist('sean', { id: 'friend' }))?.items,
+    ).toEqual([])
+  })
+
+  it('unshared category with a kept claim returns that category for the claimer', async () => {
+    await account.writeAccountCategory({
+      id: 'fits',
+      name: 'fits',
+      createdAt: 9,
+    })
+    await account.writeAccountItem(input('tee', { categoryId: 'fits' }))
+    await publicSheet.claimPublicItem({ id: 'friend' }, 'sean', 'tee')
+    await account.writeShareSettings({ sheetIds: ['fits'], sharing: false })
+    const friend = await publicSheet.loadPublicWishlist('sean', {
+      id: 'friend',
+    })
+    expect(friend?.categories.map((row) => row.id)).toEqual(['fits'])
+    const other = await publicSheet.loadPublicWishlist('sean', { id: 'other' })
+    expect(other?.categories).toEqual([])
   })
 
   it('release only drops your own claim (undo)', async () => {

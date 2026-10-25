@@ -21,6 +21,7 @@ export function ShareCard({
   total,
   showPrices,
   link,
+  countLine,
 }: {
   fill: SheetFill
   kicker: string
@@ -30,6 +31,8 @@ export function ShareCard({
   showPrices: boolean
   /** Link chip text: host + first path segment (r2 #19 / C90). */
   link: string
+  /** r9: the #all C98 line ("5 stickers · 2 sheets"); replaces C14. */
+  countLine?: string
 }) {
   const aspectOf = useAspects(stickers)
   const plan = planCard(
@@ -43,7 +46,9 @@ export function ShareCard({
       <div className="nt-card-head">
         <span className="nt-kicker">{kicker}</span>
         <h3>{title}</h3>
-        <p>{sheetMeta(stickers.length, showPrices ? total : null)}</p>
+        <p>
+          {countLine ?? sheetMeta(stickers.length, showPrices ? total : null)}
+        </p>
       </div>
       {plan.places.map((place) => {
         const item = byId.get(place.id)

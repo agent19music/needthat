@@ -18,6 +18,7 @@ import {
   ExportIcon,
   FolderSimpleIcon,
   HandGrabbingIcon,
+  HandHeartIcon,
   HandPointingIcon,
   LinkIcon,
   PencilSimpleIcon,
@@ -43,6 +44,7 @@ import {
   sheetKicker,
 } from '#/lib/sticker/sheets'
 import { markOpened } from '#/lib/sticker/opened'
+import { COPY_ITEM_LINK } from '#/lib/sticker/claim-copy'
 import type { SheetFill } from '#/lib/sticker/sheets'
 import type { GuestItem } from '#/lib/guest-wishlist'
 
@@ -76,6 +78,7 @@ export function ItemPanel({
   onEditPrice,
   onCopyLink,
   onPrintSticker,
+  claimLine,
   wide,
 }: {
   item: GuestItem
@@ -97,10 +100,15 @@ export function ItemPanel({
   onMove?: (item: GuestItem, categoryId: string | null) => void
   /** B2·04 overflow: Edit price (C42) opens the B2·03 price sheet. */
   onEditPrice?: (item: GuestItem) => void
-  /** Copy link (C43): copies the shop link. */
+  /** C43 "Copy item link": copies the shop link. */
   onCopyLink?: (item: GuestItem) => void
   /** B2·04 bottom bar: white "Print sticker". */
   onPrintSticker?: (item: GuestItem) => void
+  /**
+   * r7 (Q1, C105): "Claimed by {name} on {date}". A chip in the 1440 pane;
+   * a line in the 390 "…" sheet header.
+   */
+  claimLine?: string | null
   wide?: boolean
 }) {
   const reduced = useReducedMotion() ?? false
@@ -111,9 +119,9 @@ export function ItemPanel({
   const canArrange = Boolean(onArrange) && sheet.stickers.length > 1
   // r4: one item menu (Edit price, Mark as got, Move, Copy link, Arrange,
   // divider, Remove); each panel drops only what has its own button there.
-  // The 390 bar has its own bin (Delete sticker), so Remove only shows wide.
+  // r9 (Bau, B2·05): Remove ends both menus, the 390 sheet included, even
+  // though the 390 bar also has its bin (Delete sticker).
   // r6: both bars have "Peel off · Got it", so neither menu has Mark as got.
-  const ownDelete = !wide
   const hero = useRef<HTMLDivElement>(null)
   const got = item.status === 'purchased'
   const price = showPrice ? formatPrice(item.price) : null
@@ -244,7 +252,7 @@ export function ItemPanel({
                       onSelect={() => onCopyLink(item)}
                     >
                       <LinkIcon aria-hidden="true" />
-                      Copy link
+                      {COPY_ITEM_LINK}
                     </Menu.Item>
                   ) : null}
                   {canArrange ? (
@@ -253,19 +261,15 @@ export function ItemPanel({
                       Arrange sheet
                     </Menu.Item>
                   ) : null}
-                  {ownDelete ? null : (
-                    <>
-                      <Menu.Separator className="nt-dd-sep" />
-                      <Menu.Item
-                        className="nt-dd-item"
-                        data-tone="red"
-                        onSelect={() => onDelete(item)}
-                      >
-                        <TrashIcon aria-hidden="true" />
-                        Remove
-                      </Menu.Item>
-                    </>
-                  )}
+                  <Menu.Separator className="nt-dd-sep" />
+                  <Menu.Item
+                    className="nt-dd-item"
+                    data-tone="red"
+                    onSelect={() => onDelete(item)}
+                  >
+                    <TrashIcon aria-hidden="true" />
+                    Remove
+                  </Menu.Item>
                 </Menu.Content>
               </Menu.Portal>
             </Menu.Root>
@@ -364,6 +368,15 @@ export function ItemPanel({
             <CalendarBlankIcon aria-hidden="true" />
             Added <span>{addedDate(item.createdAt, now)}</span>
           </span>
+          {wide && claimLine ? (
+            <span
+              className="nt-chip nt-chip-claim"
+              style={{ transform: 'rotate(-0.5deg)' }}
+            >
+              <HandHeartIcon aria-hidden="true" />
+              {claimLine}
+            </span>
+          ) : null}
         </div>
         {others.length > 0 ? (
           <div className="nt-also">
@@ -487,12 +500,28 @@ export function ItemPanel({
             <div>
               <b>{item.title}</b>
               <small>{[sheet.tag, price].filter(Boolean).join(' · ')}</small>
+              {claimLine ? (
+                <small className="nt-ovf-claim">
+                  <HandHeartIcon weight="fill" aria-hidden="true" />
+                  {claimLine}
+                </small>
+              ) : null}
             </div>
           </div>
           <div className="nt-dd-sep" />
-          {/* r4: the shared item menu, minus Remove when the 390 bar
-              already has its own bin (Delete sticker). */}
-          <div role="menu" aria-label="More">
+          {/* r9: the header stays put; this list scrolls inside the sheet
+              (max-height 100dvh - 24px) so Remove is always reachable. */}
+          <div role="menu" aria-label="More" className="nt-ovf-list">
+            {/* r8: Edit details leads the 390 menu too, matching 1440. */}
+            <SheetRow
+              onClick={() => {
+                setMore(false)
+                onEdit(item)
+              }}
+            >
+              <PencilSimpleIcon aria-hidden="true" />
+              Edit details
+            </SheetRow>
             {onEditPrice ? (
               <SheetRow
                 onClick={() => {
@@ -524,7 +553,7 @@ export function ItemPanel({
                 }}
               >
                 <LinkIcon aria-hidden="true" />
-                Copy link
+                {COPY_ITEM_LINK}
               </SheetRow>
             ) : null}
             {canArrange && onArrange ? (
@@ -538,21 +567,17 @@ export function ItemPanel({
                 Arrange sheet
               </SheetRow>
             ) : null}
-            {ownDelete ? null : (
-              <>
-                <div className="nt-dd-sep" />
-                <SheetRow
-                  tone="red"
-                  onClick={() => {
-                    setMore(false)
-                    onDelete(item)
-                  }}
-                >
-                  <TrashIcon aria-hidden="true" />
-                  Remove
-                </SheetRow>
-              </>
-            )}
+            <div className="nt-dd-sep" />
+            <SheetRow
+              tone="red"
+              onClick={() => {
+                setMore(false)
+                onDelete(item)
+              }}
+            >
+              <TrashIcon aria-hidden="true" />
+              Remove
+            </SheetRow>
           </div>
         </Overlay>
       )}

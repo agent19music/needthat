@@ -2,10 +2,21 @@
  * Natural aspect ratio (w / h) per sticker image, shared by every sheet so a
  * sticker keeps its box between the board, the tabs and the share card.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
 const known = new Map<string, number>()
 const listeners = new Set<() => void>()
+/** Bumped on every new aspect so late subscribers still re-render (r8). */
+let version = 0
+
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+const getVersion = () => version
+const getServerVersion = () => 0
 
 export function aspectKey(item: { id: string; imageUrl?: string | null }) {
   return `${item.id}|${item.imageUrl ?? ''}`
@@ -24,6 +35,7 @@ export function reportAspect(
   const previous = known.get(key)
   if (previous !== undefined && Math.abs(previous - ratio) < 0.01) return
   known.set(key, ratio)
+  version += 1
   listeners.forEach((listener) => listener())
 }
 
@@ -34,14 +46,9 @@ export function reportAspect(
 export function useAspects(
   items: ReadonlyArray<{ id: string; imageUrl?: string | null }>,
 ) {
-  const [, setVersion] = useState(0)
-  useEffect(() => {
-    const listener = () => setVersion((value) => value + 1)
-    listeners.add(listener)
-    return () => {
-      listeners.delete(listener)
-    }
-  }, [])
+  // r8: an external store, so aspects reported between render and
+  // subscription (cached images at hydration) are not lost (minor 13).
+  useSyncExternalStore(subscribe, getVersion, getServerVersion)
   const missing = items.filter(
     (item) => item.imageUrl && !known.has(aspectKey(item)),
   )

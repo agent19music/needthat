@@ -23,6 +23,7 @@ import {
   slapTransition,
 } from '#/components/sticker/motion'
 import {
+  captionSub,
   dotFill,
   formatPrice,
   gotDate,
@@ -39,7 +40,15 @@ import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
 /** board: owner's sheets (got items are ghosts) · got: Got sheet/page · public: claim view. */
 export type SheetMode = 'board' | 'got' | 'public'
 
-export type ClaimState = { claimed: boolean; mine: boolean }
+export type ClaimState = {
+  claimed: boolean
+  mine: boolean
+  /**
+   * r7: caption sub-line in place of the brand. C104 "Claimed by {name}"
+   * for the owner, C110 "Claimed by you" on an unshared page.
+   */
+  caption?: string | null
+}
 
 export type SheetProps = {
   fill: SheetFill
@@ -111,7 +120,12 @@ export function Sheet(props: SheetProps) {
   const plan =
     props.variant === 'wall' && props.mode === 'got'
       ? planGotWall(inputs)
-      : planSheet(props.variant, inputs, { hint: props.hint, fab: props.fab })
+      : planSheet(props.variant, inputs, {
+          hint: props.hint,
+          fab: props.fab,
+          // r8 (minor 12): public column bottom = caption text + 40.
+          textBottom: props.mode === 'public',
+        })
   const byId = new Map(props.stickers.map((item) => [item.id, item]))
   const more = moreLabel(plan.hidden)
   return (
@@ -402,11 +416,16 @@ function StickerSlot({
     ...at(place.caption),
     width: u(place.caption.w),
   }
-  // r2 B3·04: claim pill on the sticker's bottom-inner corner.
+  // r2 B3·04: claim pill on the sticker's bottom-inner corner. r8: the C86
+  // lock pill is taller and wider than the 26h mine pill (white border,
+  // tracked caps), so its rotated corner dipped into the caption; it sits
+  // 8px higher, still on the corner.
+  const lockPill = Boolean(claim?.claimed && !(claim.mine && !claim.caption))
+  const claimTop = u(place.h - (lockPill ? 28 : 20))
   const claimStyle: CSSProperties =
     place.lane === 'R'
-      ? { left: u(-8), top: u(place.h - 20) }
-      : { right: u(-8), top: u(place.h - 20) }
+      ? { left: u(-8), top: claimTop }
+      : { right: u(-8), top: claimTop }
 
   if (ghost) {
     return (
@@ -562,7 +581,9 @@ function StickerSlot({
           transition={slapTransition(reduced)}
         >
           <ClaimedTag
-            mine={claim.mine}
+            // r8: when the caption carries the claim (C110 on the unshared
+            // page, C104 for the owner), the pill is the standard C86 lock.
+            mine={claim.mine && !claim.caption}
             style={{
               position: 'relative',
               transform: `rotate(${MOTION.claimed.rotate}deg)`,
@@ -595,9 +616,12 @@ function captionFor(
   if (ghost) return { title: item.title, sub: 'peeled · in Got' }
   // B1·08: the Got sheet's caption sub is the date.
   if (sheet.mode === 'got')
-    return { title: item.title, sub: gotDate(gotTime(item)) }
-  // r2 §6: captions stay on in public, title + brand.
-  return { title: item.title, sub: item.brand || null }
+    return { title: item.title, sub: gotDate(gotTime(item), sheet.now) }
+  // r7 (C104 / C110): a claim's line takes the brand's slot, one line.
+  const claimLine = sheet.claimOf?.(item).caption
+  if (claimLine) return { title: item.title, sub: claimLine }
+  // r2 §6: captions stay on in public. COPY-R2: brand, else hostname.
+  return { title: item.title, sub: captionSub(item) }
 }
 
 function Caption({

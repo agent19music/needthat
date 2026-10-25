@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import {
   CheckCircleIcon,
   HandHeartIcon,
   LockSimpleIcon,
 } from '@phosphor-icons/react'
 
+import { CLAIMED_BADGE, CLAIMED_BY_YOU } from '#/lib/sticker/claim-copy'
 import { stickerKind } from '#/lib/sticker/sheets'
 import type { DotFill, StickerKind } from '#/lib/sticker/sheets'
 import type { GuestItem } from '#/lib/guest-wishlist'
@@ -287,7 +288,7 @@ export function ClaimedTag({
       ) : (
         <LockSimpleIcon weight="bold" aria-hidden="true" />
       )}
-      {mine ? 'Claimed by you' : 'CLAIMED'}
+      {mine ? CLAIMED_BY_YOU : CLAIMED_BADGE}
     </span>
   )
 }
@@ -368,4 +369,41 @@ export function KissCutFilters() {
 /** Initials for the avatar: "Sean Motanya" → "SM". */
 export function nameInitials(name: string) {
   return initials(name)
+}
+
+/**
+ * B1·06 / B4·01 cover note (r7, Q4): taped white note with the FOR kicker
+ * (C12, "FOR {value}") over the bio (C11, 2 lines max). The owner gets the
+ * "Add a short bio" prompt when the bio is empty; public and guest hide it.
+ */
+export function CoverNote({
+  bio,
+  forLine,
+  prompt,
+}: {
+  bio: string
+  forLine: string
+  /** Owner only: shown (and linked) when there's no bio. */
+  prompt?: ReactNode
+}) {
+  const text = bio.trim()
+  const value = forLine.trim()
+  if (!text && !value && !prompt) return null
+  return (
+    <div className="nt-cover-note">
+      <span className="nt-cover-note-tape" aria-hidden="true" />
+      {value ? (
+        <div className="nt-cover-for">
+          For <span>{value}</span>
+        </div>
+      ) : null}
+      {text ? (
+        <p className="nt-cover-bio">{text}</p>
+      ) : prompt ? (
+        <div className="nt-cover-bio" data-empty="true">
+          {prompt}
+        </div>
+      ) : null}
+    </div>
+  )
 }

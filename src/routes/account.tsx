@@ -17,13 +17,11 @@ import { blobToBase64 } from '#/lib/avatar-image'
 import { getPasswordStatus, uploadAvatar } from '#/lib/profile'
 import { ProfilePhoto } from '#/components/profile-photo/profile-photo'
 import { describeClient } from '#/lib/session-device'
+import { loadShareSettings, saveProfile } from '#/lib/wishlist/account'
 
 export const Route = createFileRoute('/account')({
   head: () => ({
-    meta: [
-      { title: 'Account' },
-      { name: 'robots', content: 'noindex' },
-    ],
+    meta: [{ title: 'Account' }, { name: 'robots', content: 'noindex' }],
   }),
   component: AccountPage,
 })
@@ -91,6 +89,26 @@ function ProfileForm({
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [label, setLabel] = useState('Save changes')
+  // r7 (Q4): the cover note's bio (C11) and FOR line (C12).
+  const [about, setAbout] = useState({ bio: '', forLine: '' })
+  const [savedAbout, setSavedAbout] = useState({ bio: '', forLine: '' })
+
+  useEffect(() => {
+    let cancelled = false
+    loadShareSettings()
+      .then((result) => {
+        if (cancelled || !result.ok) return
+        const next = { bio: result.bio, forLine: result.forLine }
+        setAbout(next)
+        setSavedAbout(next)
+      })
+      .catch(() => {
+        // Fields stay empty; saving still writes them.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     setName(initialName)
@@ -111,6 +129,21 @@ function ProfileForm({
     const profile: { name?: string; username?: string } = {}
     if (nextName !== initialName) profile.name = nextName
     if (nextUsername !== initialUsername) profile.username = nextUsername
+    if (
+      about.bio.trim() !== savedAbout.bio ||
+      about.forLine.trim() !== savedAbout.forLine
+    ) {
+      const result = await saveProfile({ data: about }).catch(() => null)
+      if (!result?.ok) {
+        setSaving(false)
+        setLabel('Save changes')
+        setError(result?.message ?? 'Your changes were not saved.')
+        return
+      }
+      const next = { bio: result.bio, forLine: result.forLine }
+      setAbout(next)
+      setSavedAbout(next)
+    }
     if (profile.name || profile.username) {
       const result = await authClient.updateUser(profile)
       if (result.error) {
@@ -177,6 +210,28 @@ function ProfileForm({
           value={username}
           onChange={(event) => {
             setUsername(event.target.value)
+            setLabel('Save changes')
+          }}
+        />
+        <Input
+          label="Bio"
+          name="bio"
+          placeholder="Tell friends a bit about what you like"
+          maxLength={70}
+          value={about.bio}
+          onChange={(event) => {
+            setAbout({ ...about, bio: event.target.value })
+            setLabel('Save changes')
+          }}
+        />
+        <Input
+          label="Who or what it's for"
+          name="forLine"
+          placeholder="My birthday"
+          maxLength={12}
+          value={about.forLine}
+          onChange={(event) => {
+            setAbout({ ...about, forLine: event.target.value })
             setLabel('Save changes')
           }}
         />
@@ -272,7 +327,9 @@ function PasswordForm({ email }: { email: string }) {
       setError(authMessage(result.error, 'The reset email could not be sent.'))
       return
     }
-    setNotice('If this inbox can receive mail, a link to set your password is on its way.')
+    setNotice(
+      'If this inbox can receive mail, a link to set your password is on its way.',
+    )
   }
 
   return (
@@ -311,7 +368,12 @@ function PasswordForm({ email }: { email: string }) {
             </Alert>
           ) : null}
           <div>
-            <Button type="submit" variant="secondary" loading={loading} disabled={level < 3}>
+            <Button
+              type="submit"
+              variant="secondary"
+              loading={loading}
+              disabled={level < 3}
+            >
               Change password
             </Button>
           </div>
@@ -319,7 +381,8 @@ function PasswordForm({ email }: { email: string }) {
       ) : (
         <div className={styles.form}>
           <p className={styles.note}>
-            This account signs in with Google. Email a link if you also want a password.
+            This account signs in with Google. Email a link if you also want a
+            password.
           </p>
           {error ? (
             <Alert tone="danger" title="Email not sent">
@@ -418,7 +481,8 @@ function SessionsPanel({ currentId }: { currentId: string }) {
             const token = tokens.current[row.id]
             if (!token) throw new Error('That session could not be signed out.')
             const result = await authClient.revokeSession({ token })
-            if (result.error) throw new Error('That session could not be signed out.')
+            if (result.error)
+              throw new Error('That session could not be signed out.')
           }}
           onRevokeOthers={async () => {
             const result = await authClient.revokeOtherSessions()
@@ -452,4 +516,3 @@ function ShareLink({ username }: { username: string }) {
     </section>
   )
 }
-

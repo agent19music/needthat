@@ -1,3 +1,10 @@
+import {
+  anyShared,
+  linkDescription,
+  linkTitle,
+} from './wishlist/sheet-share.ts'
+import type { SheetShare } from './wishlist/types.ts'
+
 export const siteName = '#needthat'
 
 export const siteTitle = '#needthat — a visual wishlist'
@@ -76,21 +83,34 @@ export function publicListHead(
     username: string
     name: string
     imageVersion: string
-    items: Array<unknown>
+    items: Array<{ shared?: boolean; categoryId?: string | null }>
+    sheets?: Record<string, SheetShare>
   },
   sheet: { id: string; name: string } | null = null,
 ) {
   const query = sheet ? `?sheet=${encodeURIComponent(sheet.id)}` : ''
   const path = `/u/${profile.username}${query}`
   const url = origin ? `${origin}${path}` : undefined
+  // X5 og:title for the whole link; a one-sheet link keeps its sheet name.
   const title = sheet
     ? `#${sheet.name} · ${profile.name} on #needthat`
-    : `${profile.name} on #needthat`
-  const count = profile.items.length
+    : linkTitle(profile.name)
+  // Unshared sheets only carry the viewer's own claims: never count them.
+  const shown = profile.items.filter(
+    (item) =>
+      item.shared !== false &&
+      (!sheet || (item.categoryId ?? null) === sheet.id),
+  )
+  const count = shown.length
+  const sheetCount = new Set(shown.map((item) => item.categoryId ?? '')).size
+  const sheets = profile.sheets ?? {}
+  const claimable = sheet
+    ? anyShared(sheets, [sheet.id], 'allowClaims')
+    : anyShared(sheets, Object.keys(sheets), 'allowClaims')
   const description =
     count === 0
       ? `${profile.name} has not added a wish yet.`
-      : `${profile.name} has ${count} ${count === 1 ? 'wish' : 'wishes'} on #needthat.`
+      : linkDescription(count, sheetCount, claimable)
   const dynamic = Boolean(origin) && count > 0
   const image = origin
     ? dynamic
