@@ -29,6 +29,13 @@
       "when": 1792747226909,
       "tag": "0003_stacks_position",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792912054880,
+      "tag": "0004_sticker_sheet",
+      "breakpoints": true
     }
   ]
 }

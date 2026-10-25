@@ -96,6 +96,7 @@ export async function saveActiveCategory(
     data: {
       id: category.id,
       name: category.name,
+      color: category.color ?? null,
       createdAt: category.createdAt,
     },
   })
@@ -113,6 +114,7 @@ export async function importGuestWishlist(userId: string) {
       data: {
         id: category.id,
         name: category.name,
+        color: category.color ?? null,
         createdAt: category.createdAt,
       },
     })
@@ -145,6 +147,7 @@ async function itemPayload(item: GuestItem) {
         : null,
     imageBase64: upload ? await blobToBase64(item.image as Blob) : undefined,
     imageType: upload ? (item.imageType ?? item.image?.type) : undefined,
+    price: item.price ?? null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   }

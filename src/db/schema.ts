@@ -9,6 +9,7 @@ export {
   userRelations,
   verification,
 } from './auth-schema.ts'
+import { user } from './auth-schema.ts'
 import {
   index,
   integer,
@@ -32,6 +33,13 @@ export const lists = sqliteTable(
     id: text('id').primaryKey(),
     userId: text('user_id'),
     name: text('name').notNull().default('Wishlist'),
+    /** Share toggles (Sticker Sheet share sheet). Per list until Sean decides per-sheet (Q7). */
+    sharePrices: integer('share_prices', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    shareClaims: integer('share_claims', { mode: 'boolean' })
+      .notNull()
+      .default(true),
     ...timestamps,
   },
   (table) => [index('lists_user_id_idx').on(table.userId)],
@@ -45,6 +53,8 @@ export const categories = sqliteTable(
       .notNull()
       .references(() => lists.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    /** Sheet colour. Null rows fall back to the blue → green → red cycle by creation order. */
+    color: text('color', { enum: ['blue', 'green', 'red'] }),
     createdAt: timestamps.createdAt,
   },
   (table) => [index('categories_list_id_idx').on(table.listId)],
@@ -178,11 +188,32 @@ export const images = sqliteTable(
     sourceImageUrl: text('source_image_url'),
     contentType: text('content_type'),
     byteSize: integer('byte_size'),
-    role: text('role', { enum: ['original', 'processed'] }).notNull(),
+    /** `die` is the cut-out with the white sticker border baked in. */
+    role: text('role', { enum: ['original', 'processed', 'die'] }).notNull(),
     derivedFromId: text('derived_from_id'),
     createdAt: timestamps.createdAt,
   },
   (table) => [index('images_item_id_idx').on(table.itemId)],
+)
+
+/**
+ * One active claim per item ("I'll get this"). The owner never reads this
+ * table (Q3 default: claims stay a surprise); only the claimer and other
+ * visitors see that an item is taken.
+ */
+export const claims = sqliteTable(
+  'claims',
+  {
+    id: text('id').primaryKey(),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => listItems.id, { onDelete: 'cascade' }),
+    claimerId: text('claimer_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamps.createdAt,
+  },
+  (table) => [uniqueIndex('claims_item_id_idx').on(table.itemId)],
 )
 
 export const lookupCache = sqliteTable(

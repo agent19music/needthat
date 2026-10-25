@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import * as Sentry from '@sentry/tanstackstart-react'
 
 import { getDb } from '#/db/index'
-import { categories, listItems, lists, offers } from '#/db/schema'
+import { categories, images, listItems, lists, offers } from '#/db/schema'
 import {
   decodeImageBase64,
   isSafeImageUrl,
@@ -10,6 +10,7 @@ import {
 } from '#/lib/images/store-image.server'
 import { readSession } from '#/lib/session.server'
 import type { GuestCategory } from '#/lib/guest-wishlist'
+import { cycleColor, isTagColor } from '#/lib/sticker/sheets'
 
 import type {
   Price,
@@ -153,6 +154,9 @@ export async function writeAccountItem(input: SavedItemInput) {
           updatedAt: now,
         },
       })
+    if (input.price) await recordPrice(input.id, input.price, input.sourceUrl)
+    if (imageUrl && imageUrl !== existing?.imageUrl)
+      await recordDieImage(input.id, imageUrl)
     const { warmShareCardForUser } = await import('#/lib/og/card.server')
     warmShareCardForUser(session.user.id)
     return { ok: true as const }
@@ -200,19 +204,32 @@ export async function writeAccountCategory(input: SavedCategoryInput) {
         message: 'That category could not be saved.',
       }
     }
+    // A new tag takes the next slot in the sheet cycle unless the client sent one.
+    const color = isTagColor(input.color)
+      ? input.color
+      : existing?.color ??
+        cycleColor(
+          (
+            await getDb()
+              .select({ id: categories.id })
+              .from(categories)
+              .where(eq(categories.listId, list.id))
+          ).length,
+        )
     await getDb()
       .insert(categories)
       .values({
         id: input.id,
         listId: list.id,
         name: input.name,
+        color,
         createdAt: existing?.createdAt ?? new Date(input.createdAt),
       })
       .onConflictDoUpdate({
         target: categories.id,
-        set: { name: input.name },
+        set: { name: input.name, color },
       })
-    return { ok: true as const }
+    return { ok: true as const, color }
   })
 }
 
@@ -263,6 +280,99 @@ export async function reorderAccountItems(ids: Array<string>) {
         .where(and(eq(listItems.id, change.id), eq(listItems.listId, list.id)))
     }
     return { ok: true as const, changed: changes.length }
+  })
+}
+
+/** Share toggles for the owner's list (Q7 default: one setting per list). */
+export async function readShareSettings() {
+  const session = await readSession()
+  if (!session) {
+    return { ok: false as const, message: 'Sign in to change sharing.' }
+  }
+  const list = await findList(session.user.id)
+  return {
+    ok: true as const,
+    showPrices: list?.sharePrices ?? true,
+    allowClaims: list?.shareClaims ?? true,
+  }
+}
+
+export async function writeShareSettings(input: {
+  showPrices?: boolean
+  allowClaims?: boolean
+}) {
+  return Sentry.startSpan({ name: 'Saving share settings' }, async () => {
+    const session = await readSession()
+    if (!session) {
+      return { ok: false as const, message: 'Sign in to change sharing.' }
+    }
+    const list = await ensureList(session.user.id)
+    const set: Partial<typeof lists.$inferInsert> = { updatedAt: new Date() }
+    if (typeof input.showPrices === 'boolean') set.sharePrices = input.showPrices
+    if (typeof input.allowClaims === 'boolean')
+      set.shareClaims = input.allowClaims
+    await getDb().update(lists).set(set).where(eq(lists.id, list.id))
+    const { warmShareCardForUser } = await import('#/lib/og/card.server')
+    warmShareCardForUser(session.user.id)
+    return {
+      ok: true as const,
+      showPrices: set.sharePrices ?? list.sharePrices,
+      allowClaims: set.shareClaims ?? list.shareClaims,
+    }
+  })
+}
+
+/** Adds an offer row when the price read from the link differs from the latest one. */
+async function recordPrice(itemId: string, price: Price, sourceUrl: string) {
+  const latest = (await readPrices([itemId])).get(itemId)
+  if (
+    latest &&
+    latest.amount === price.amount &&
+    latest.currency === price.currency
+  )
+    return
+  let host: string | null = null
+  try {
+    host = sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./, '') : null
+  } catch {
+    host = null
+  }
+  // One link offer per item: D1 timestamps are whole seconds, so a second
+  // row in the same second could not be told apart from the first.
+  await getDb()
+    .delete(offers)
+    .where(and(eq(offers.itemId, itemId), eq(offers.provider, 'link')))
+  await getDb()
+    .insert(offers)
+    .values({
+      id: crypto.randomUUID(),
+      itemId,
+      sourceName: host,
+      url: sourceUrl || null,
+      currency: price.currency,
+      priceAmount: price.amount,
+      provider: 'link',
+      observedAt: new Date(),
+    })
+}
+
+/** Records the baked sticker PNG as the item's `die` image (Bau Q11). */
+async function recordDieImage(itemId: string, imageUrl: string) {
+  const key = imageUrl.startsWith('/api/images/d-')
+    ? imageUrl.slice('/api/images/'.length)
+    : null
+  if (!key) return
+  const db = getDb()
+  await db
+    .delete(images)
+    .where(and(eq(images.itemId, itemId), eq(images.role, 'die')))
+  await db.insert(images).values({
+    id: crypto.randomUUID(),
+    itemId,
+    r2Key: key,
+    contentType: 'image/png',
+    role: 'die',
+    createdAt: new Date(),
   })
 }
 
@@ -330,7 +440,7 @@ function cleanImageUrl(value: string | null) {
   if (!value) return null
   if (value.startsWith('/api/images/')) {
     const key = value.slice('/api/images/'.length)
-    return /^[aocg]-[A-Za-z0-9-]{1,160}$/.test(key) ? value : null
+    return /^[aocgd]-[A-Za-z0-9-]{1,160}$/.test(key) ? value : null
   }
   return isSafeImageUrl(value) ? value : null
 }
@@ -362,6 +472,7 @@ function toGuestCategory(row: typeof categories.$inferSelect): GuestCategory {
   return {
     id: row.id,
     name: row.name,
+    color: row.color ?? null,
     createdAt: row.createdAt.getTime(),
   }
 }

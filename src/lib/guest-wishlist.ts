@@ -5,6 +5,8 @@ export type ItemStatus = 'unresolved' | 'purchased'
 export type GuestCategory = {
   id: string
   name: string
+  /** Sheet colour; optional so tags saved before the Sticker Sheet still load. */
+  color?: 'blue' | 'green' | 'red' | null
   createdAt: number
 }
 
