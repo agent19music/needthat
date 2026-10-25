@@ -66,6 +66,30 @@ export async function saveCleanImage(itemId: string, imageBase64: string) {
   )
 }
 
+const DIE_KEY_ITEM = /^[A-Za-z0-9-]{1,80}$/
+
+/**
+ * Die PNGs get a unique key per cut: the image route serves `immutable`,
+ * so a re-cut must never reuse a URL.
+ */
+export async function saveDieImage(itemId: string, imageBase64: string) {
+  return Sentry.startSpan({ name: 'Storing a die-cut sticker' }, async () => {
+    if (!DIE_KEY_ITEM.test(itemId)) {
+      return { ok: false as const, message: 'That sticker could not be stored.' }
+    }
+    const decoded = decodeImageBase64(imageBase64, MAX_BYTES)
+    if (!decoded || decoded.contentType !== 'image/png') {
+      return { ok: false as const, message: 'That sticker could not be stored.' }
+    }
+    const nonce = crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+    const key = `d-${itemId}-${nonce}`
+    await getImageBucket().put(key, decoded.bytes, {
+      httpMetadata: { contentType: 'image/png' },
+    })
+    return { ok: true as const, url: `/api/images/${key}` }
+  })
+}
+
 export async function putImageObject(
   key: string,
   bytes: Uint8Array,

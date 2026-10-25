@@ -21,3 +21,16 @@ export const storeCleanImage = createServerFn({ method: 'POST' })
     const { saveCleanImage } = await import('./store-image.server')
     return saveCleanImage(data.itemId, data.imageBase64)
   })
+
+/** Stores a baked die-cut sticker PNG under a fresh key (`d-<item>-<nonce>`). */
+export const storeDieImage = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      itemId,
+      imageBase64: z.string().min(1).max(12_000_000),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const { saveDieImage } = await import('./store-image.server')
+    return saveDieImage(data.itemId, data.imageBase64)
+  })
