@@ -30,8 +30,15 @@ import {
   importGuestWishlist,
   loadActiveWishlist,
   saveActiveCategory,
+  reorderActiveItems,
   saveActiveItem,
 } from '#/lib/account-wishlist'
+import { StacksView } from '#/components/stacks/stacks-view'
+import {
+  nextPurchasedAt,
+  sortByPosition,
+  topPosition,
+} from '#/lib/wishlist/order'
 import { authClient } from '#/lib/auth-client'
 import { GuestStoreError } from '#/lib/guest-wishlist'
 import type { GuestCategory, GuestItem } from '#/lib/guest-wishlist'
@@ -41,6 +48,8 @@ const SUGGESTED_CATEGORIES = ['Clothes', 'Tech', 'Subscriptions']
 function categoryTag(name: string) {
   return `#${name.trim().toLowerCase()}`
 }
+
+type Layout = 'grid' | 'stacks' | 'list'
 
 export function WishlistScreen() {
   const { data: session, isPending } = authClient.useSession()
@@ -65,11 +74,12 @@ export function WishlistScreen() {
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
   const [pendingRemoval, setPendingRemoval] = useState<GuestItem | null>(null)
-  const [layout, setLayout] = useState<'grid' | 'list'>('grid')
+  const [layout, setLayout] = useState<Layout>('grid')
   const removalTimer = useRef<number | null>(null)
 
   useEffect(() => {
-    if (localStorage.getItem('wishlist-layout') === 'list') setLayout('list')
+    const saved = localStorage.getItem('wishlist-layout')
+    if (saved === 'list' || saved === 'stacks') setLayout(saved)
   }, [])
 
   useEffect(() => {
@@ -198,9 +208,10 @@ export function WishlistScreen() {
   function commitRemoval(item: GuestItem) {
     void deleteActiveItem(signedIn, item.id).catch((error: unknown) => {
       setItems((current) =>
-        [item, ...current.filter((entry) => entry.id !== item.id)].sort(
-          (a, b) => b.createdAt - a.createdAt,
-        ),
+        sortByPosition([
+          item,
+          ...current.filter((entry) => entry.id !== item.id),
+        ]),
       )
       setStorageError(messageFrom(error))
     })
@@ -229,17 +240,25 @@ export function WishlistScreen() {
     const restored = pendingRemoval
     setPendingRemoval(null)
     setItems((current) =>
-      [restored, ...current.filter((entry) => entry.id !== restored.id)].sort(
-        (a, b) => b.createdAt - a.createdAt,
-      ),
+      sortByPosition([
+        restored,
+        ...current.filter((entry) => entry.id !== restored.id),
+      ]),
     )
   }
 
   async function togglePurchased(item: GuestItem) {
+    const now = Date.now()
+    const status = item.status === 'purchased' ? 'unresolved' : 'purchased'
     const next: GuestItem = {
       ...item,
-      status: item.status === 'purchased' ? 'unresolved' : 'purchased',
-      updatedAt: Date.now(),
+      status,
+      purchasedAt: nextPurchasedAt(
+        { status: item.status, purchasedAt: item.purchasedAt ?? null },
+        status,
+        now,
+      ),
+      updatedAt: now,
     }
     const previous = items
     setItems((current) =>
@@ -253,6 +272,9 @@ export function WishlistScreen() {
       setStorageError(messageFrom(error))
     }
   }
+
+  const categoriesRef = useRef(categories)
+  categoriesRef.current = categories
 
   async function createCategory(name: string) {
     const trimmed = name.trim()
@@ -275,6 +297,7 @@ export function WishlistScreen() {
     } catch (error) {
       return messageFrom(error)
     }
+    categoriesRef.current = [...categoriesRef.current, category]
     setCategories((current) => [...current, category])
     setSelectedCategoryId(category.id)
     setStorageError(null)
@@ -312,7 +335,37 @@ export function WishlistScreen() {
     }
   }
 
-  function chooseLayout(next: 'grid' | 'list') {
+  /** Keeps manual order, purchase date and price, which the editor does not edit. */
+  function withKeptFields(item: GuestItem): GuestItem {
+    const existing = items.find((entry) => entry.id === item.id)
+    const position =
+      existing &&
+      existing.categoryId === item.categoryId &&
+      existing.position != null
+        ? existing.position
+        : topPosition(
+            items
+              .filter((entry) => entry.id !== item.id)
+              .map((entry) => entry.position ?? null),
+          )
+    return {
+      ...item,
+      position,
+      purchasedAt: existing?.purchasedAt ?? null,
+      price: existing?.price ?? null,
+    }
+  }
+
+  async function createCategoryForStacks(name: string) {
+    const error = await createCategory(name)
+    if (error) return error
+    const created = categoriesRef.current.find(
+      (category) => category.name.toLowerCase() === name.trim().toLowerCase(),
+    )
+    return created ?? 'That category could not be saved.'
+  }
+
+  function chooseLayout(next: Layout) {
     setLayout(next)
     localStorage.setItem('wishlist-layout', next)
   }
@@ -436,7 +489,7 @@ export function WishlistScreen() {
           ) : null}
         </div>
 
-        {ready && visibleItems.length > 0 ? (
+        {ready && (visibleItems.length > 0 || layout === 'stacks') ? (
           <div className="layout-switch-row">
             <div className="layout-switch" role="group" aria-label="Layout">
               <button
@@ -445,6 +498,13 @@ export function WishlistScreen() {
                 onClick={() => chooseLayout('grid')}
               >
                 Grid
+              </button>
+              <button
+                type="button"
+                aria-pressed={layout === 'stacks'}
+                onClick={() => chooseLayout('stacks')}
+              >
+                Stacks
               </button>
               <button
                 type="button"
@@ -457,7 +517,48 @@ export function WishlistScreen() {
           </div>
         ) : null}
 
-        {!ready ? (
+        {layout === 'stacks' ? (
+          <StacksView
+            items={items}
+            categories={categories}
+            ready={ready}
+            selectedCategoryId={selectedCategoryId}
+            onSelectCategory={setSelectedCategoryId}
+            onToggleGot={togglePurchased}
+            onSave={async (item) => {
+              try {
+                await saveActiveItem(signedIn, item)
+                setItems((current) =>
+                  sortByPosition([
+                    item,
+                    ...current.filter((entry) => entry.id !== item.id),
+                  ]),
+                )
+                setStorageError(null)
+              } catch (error) {
+                setStorageError(messageFrom(error))
+                throw error
+              }
+            }}
+            onRemove={removeItem}
+            onReorder={async (ids) => {
+              const next = await reorderActiveItems(signedIn, items, ids)
+              setItems(sortByPosition(next))
+              setStorageError(null)
+            }}
+            onAdd={(categoryId) => {
+              if (categoryId) setSelectedCategoryId(categoryId)
+              document.getElementById('describe')?.focus()
+            }}
+            onNewCategory={() => {
+              setCategoryName('')
+              setCategoryError(null)
+              setCategoryOpen(true)
+            }}
+            onCreateCategory={createCategoryForStacks}
+            onChangeImage={(item) => openEditor(draftFromItem(item))}
+          />
+        ) : !ready ? (
           <p className="wishlist-note mt-8">Loading your list…</p>
         ) : visibleItems.length === 0 ? (
           <div className="empty-state">
@@ -517,11 +618,13 @@ export function WishlistScreen() {
         }}
         onSave={async (item) => {
           try {
-            await saveActiveItem(signedIn, item)
+            const kept = withKeptFields(item)
+            await saveActiveItem(signedIn, kept)
             setItems((current) =>
-              [item, ...current.filter((entry) => entry.id !== item.id)].sort(
-                (a, b) => b.createdAt - a.createdAt,
-              ),
+              sortByPosition([
+                kept,
+                ...current.filter((entry) => entry.id !== kept.id),
+              ]),
             )
             setEditor(null)
             setStorageError(null)

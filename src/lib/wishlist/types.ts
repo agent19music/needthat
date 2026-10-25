@@ -7,9 +7,17 @@ export type StoredWishlistItem = {
   categoryId: string | null
   status: 'unresolved' | 'purchased'
   imageUrl: string | null
+  /** Manual order inside a stack; null until the owner arranges or the backfill runs. */
+  position: number | null
+  /** When the item was marked got; null while wanted. */
+  purchasedAt: number | null
+  /** Latest priced offer, or null. Cards hide the price when this is null. */
+  price: Price | null
   createdAt: number
   updatedAt: number
 }
+
+export type Price = { amount: number; currency: string }
 
 export type SavedItemInput = {
   id: string
